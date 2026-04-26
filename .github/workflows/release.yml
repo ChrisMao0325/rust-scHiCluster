@@ -7,9 +7,10 @@ name: release
 #   - manual run from the Actions UI           → full build + upload artifacts only
 #
 # Authentication:
-#   Uses a PyPI API token stored as the repo secret PYPI_API_TOKEN.
-#   To switch to PyPI Trusted Publishing later, remove `password:` and rely on
-#   the `id-token: write` permission already declared on the release job.
+#   PyPI Trusted Publishing (OIDC). Configured at
+#   https://pypi.org/manage/project/schicluster-rs/settings/publishing/
+#   with: workflow=release.yml, environment=pypi.
+#   No PyPI token in repo secrets.
 
 on:
   push:
@@ -127,5 +128,4 @@ jobs:
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          password: ${{ secrets.PYPI_API_TOKEN }}
           skip-existing: true
