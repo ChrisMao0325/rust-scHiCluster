@@ -13,7 +13,7 @@ implementation continues to be available as `pip install schicluster`
 
 ## What it computes
 
-`rust_schicluster.impute_chromosome(...)` runs the same end-to-end
+`schicluster_rs.impute_chromosome(...)` runs the same end-to-end
 pipeline as `schicluster.impute.impute_chromosome.impute_chromosome`:
 
 1. Read raw single-cell contact matrix from a `.cool` file.
@@ -69,16 +69,16 @@ cd rust-scHiCluster
 maturin develop --release   # build + install into the active venv
 ```
 
-PyPI release coming soon (`pip install rust_schicluster`).
+PyPI release coming soon (`pip install schicluster-rs`).
 
 ## Use
 
 **Drop-in monkey-patch (recommended)** — no code changes anywhere:
 
 ```python
-import rust_schicluster
-rust_schicluster.set_num_threads(2)        # 8 workers × 2 = 16 cores
-rust_schicluster.patch_schicluster()
+import schicluster_rs
+schicluster_rs.set_num_threads(2)        # 8 workers × 2 = 16 cores
+schicluster_rs.patch_schicluster()
 
 # every downstream call to scHiCluster's impute_chromosome now uses Rust:
 from schicluster.impute.impute_chromosome import impute_chromosome
@@ -90,7 +90,7 @@ impute_chromosome(scool_url=..., chrom='chr1', resolution=25_000,
 **Direct**:
 
 ```python
-from rust_schicluster import random_walk_cpu, impute_chromosome
+from schicluster_rs import random_walk_cpu, impute_chromosome
 
 # Just the iterative RWR step (CSR → CSR):
 Q = random_walk_cpu(P, rp=0.5, tol=0.01)
@@ -115,11 +115,11 @@ Example: 16-core node with 8 workers → `set_num_threads(2)`.
 
 ```python
 from concurrent.futures import ProcessPoolExecutor
-import rust_schicluster
+import schicluster_rs
 
 def worker_init():
-    rust_schicluster.set_num_threads(2)
-    rust_schicluster.patch_schicluster()
+    schicluster_rs.set_num_threads(2)
+    schicluster_rs.patch_schicluster()
 
 with ProcessPoolExecutor(max_workers=8, initializer=worker_init) as ex:
     list(ex.map(impute_one_cell, cells))
@@ -136,7 +136,7 @@ rust-scHiCluster/
 │   ├── Cargo.toml
 │   └── src/lib.rs          all algorithms (~500 LoC)
 ├── python/
-│   └── rust_schicluster/__init__.py     thin Python wrapper + monkey-patch
+│   └── schicluster_rs/__init__.py     thin Python wrapper + monkey-patch
 └── tests/
     └── test_parity.py      parity vs scipy on random sparse matrices
 ```

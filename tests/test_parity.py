@@ -38,8 +38,8 @@ def _make_test_csr(n: int = 200, density: float = 0.05, seed: int = 0):
 @pytest.mark.parametrize("rp", [0.05, 0.5, 0.9])
 def test_random_walk_parity(n: int, rp: float):
     """Rust vs scipy: ‖Q_rust − Q_py‖_∞ / ‖Q_py‖_∞ < 1e-4."""
-    rust_schicluster = pytest.importorskip("rust_schicluster")
-    if not rust_schicluster._RUST_AVAILABLE:
+    schicluster_rs = pytest.importorskip("schicluster_rs")
+    if not schicluster_rs._RUST_AVAILABLE:
         pytest.skip("rust extension not built — run `maturin develop --release`")
 
     pytest.importorskip("schicluster")
@@ -47,7 +47,7 @@ def test_random_walk_parity(n: int, rp: float):
     P = _make_test_csr(n=n, seed=hash((n, rp)) % 2**31)
 
     Q_py = schicluster_imp.random_walk_cpu(P, rp, tol=0.01).toarray()
-    Q_rs = rust_schicluster.random_walk_cpu(P, rp=rp, tol=0.01, n_iter=30).toarray()
+    Q_rs = schicluster_rs.random_walk_cpu(P, rp=rp, tol=0.01, n_iter=30).toarray()
 
     rel_err = np.max(np.abs(Q_py - Q_rs)) / max(np.max(np.abs(Q_py)), 1e-9)
     assert rel_err < 1e-4, (
@@ -60,25 +60,25 @@ def test_random_walk_parity(n: int, rp: float):
 @pytest.mark.parametrize("rp", [1.0])
 def test_random_walk_rp_one_returns_p(rp: float):
     """rp=1 must early-out to P unchanged (matches upstream)."""
-    rust_schicluster = pytest.importorskip("rust_schicluster")
-    if not rust_schicluster._RUST_AVAILABLE:
+    schicluster_rs = pytest.importorskip("schicluster_rs")
+    if not schicluster_rs._RUST_AVAILABLE:
         pytest.skip("rust extension not built")
     P = _make_test_csr(n=64, seed=0)
-    Q = rust_schicluster.random_walk_cpu(P, rp=rp, tol=0.01).toarray()
+    Q = schicluster_rs.random_walk_cpu(P, rp=rp, tol=0.01).toarray()
     assert np.allclose(Q, P.toarray(), atol=0)
 
 
 def test_patch_schicluster():
     """patch_schicluster() should rebind upstream module's reference."""
-    rust_schicluster = pytest.importorskip("rust_schicluster")
-    if not rust_schicluster._RUST_AVAILABLE:
+    schicluster_rs = pytest.importorskip("schicluster_rs")
+    if not schicluster_rs._RUST_AVAILABLE:
         pytest.skip("rust extension not built")
     pytest.importorskip("schicluster")
     from schicluster.impute import impute_chromosome as schicluster_imp
     original = schicluster_imp.random_walk_cpu
     try:
-        ok = rust_schicluster.patch_schicluster()
+        ok = schicluster_rs.patch_schicluster()
         assert ok
-        assert schicluster_imp.random_walk_cpu is rust_schicluster.random_walk_cpu
+        assert schicluster_imp.random_walk_cpu is schicluster_rs.random_walk_cpu
     finally:
         schicluster_imp.random_walk_cpu = original

@@ -22,7 +22,7 @@ import numpy as np
 from scipy.sparse import csr_matrix, issparse
 
 try:
-    from rust_schicluster._rust import (
+    from schicluster_rs._rust import (
         py_random_walk_cpu_csr as _rwr_csr,
         py_impute_chromosome_inner as _impute_inner,
         set_num_threads as _set_num_threads,
@@ -38,8 +38,8 @@ def set_num_threads(n: int) -> bool:
     Call from each ``ProcessPoolExecutor`` worker before any impute call
     to avoid thread oversubscription. Typical sizing on a 16-core node:
 
-    >>> import rust_schicluster
-    >>> rust_schicluster.set_num_threads(2)   # 8 workers × 2 = 16 ✓
+    >>> import schicluster_rs
+    >>> schicluster_rs.set_num_threads(2)   # 8 workers × 2 = 16 ✓
 
     First-call wins — subsequent calls are no-ops (rayon's global pool
     is build-once).
@@ -184,8 +184,8 @@ def patch_schicluster() -> bool:
 
     Call once at the top of your driver script:
 
-    >>> import rust_schicluster
-    >>> rust_schicluster.patch_schicluster()
+    >>> import schicluster_rs
+    >>> schicluster_rs.patch_schicluster()
     >>> from schicluster.impute.impute_chromosome import impute_chromosome
     >>> # ... runs ~5–7× faster end-to-end on large chroms
 
