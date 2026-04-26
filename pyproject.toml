@@ -35,3 +35,6 @@ manifest-path = "rust/Cargo.toml"
 features = ["pyo3/extension-module"]
 module-name = "schicluster_rs._rust"
 python-source = "python"
+include = [
+    { path = "LICENSE", format = ["sdist", "wheel"] },
+]

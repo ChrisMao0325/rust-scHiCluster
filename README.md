@@ -69,7 +69,15 @@ cd rust-scHiCluster
 maturin develop --release   # build + install into the active venv
 ```
 
-PyPI release coming soon (`pip install schicluster-rs`).
+Or from PyPI (Linux x86_64 manylinux2014, CPython 3.10):
+
+```bash
+pip install schicluster-rs
+```
+
+Other platforms install from sdist and require Rust ≥ 1.78 in the build
+environment. Pre-built wheels for Python 3.9–3.13 across linux/macOS/Windows
+will be added via cibuildwheel.
 
 ## Use
 
