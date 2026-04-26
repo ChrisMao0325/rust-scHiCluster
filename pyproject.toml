@@ -1,0 +1,37 @@
+[build-system]
+requires = ["maturin>=1.4,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "rust_schicluster"
+version = "0.1.0"
+description = "Rust port of the hot loops in scHiCluster — drop-in replacement for `random_walk_cpu` and the windowed CSR accumulator from `schicluster.impute.impute_chromosome`. Bit-identical numerical behaviour, ~10× faster."
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.9"
+authors = [
+    {name = "Zehua Zeng", email = "starlitnightly@163.com"},
+]
+keywords = ["single-cell", "Hi-C", "scHiCluster", "rust", "imputation"]
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+dependencies = [
+    "numpy>=1.23",
+    "scipy>=1.10",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7",
+    "schicluster>=1.3",  # for parity tests
+]
+
+[tool.maturin]
+manifest-path = "rust/Cargo.toml"
+features = ["pyo3/extension-module"]
+module-name = "rust_schicluster._rust"
+python-source = "python"
