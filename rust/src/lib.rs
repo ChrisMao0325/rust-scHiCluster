@@ -21,39 +21,21 @@
 //! * [`py_impute_chromosome_inner`] — end-to-end inner pipeline. The
 //!   epione Python wrapper calls this and just hands the result to
 //!   the cooler/HDF5 writer.
+mod utils;
+
+use utils::{
+    band_idx, band_w, csr_to_banded, csr_to_dense, mirror_index, triplets_to_csr, Csr,
+};
+
 use ndarray::{s, Array1, Array2, Axis};
 use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1};
 use pyo3::prelude::*;
 use rayon::prelude::*;
 use sprs::CsMatI;
 
-type Csr = CsMatI<f32, usize>;
-
 // ---------------------------------------------------------------------------
 // Sparse helpers
 // ---------------------------------------------------------------------------
-
-fn triplets_to_csr(rows: &[u32], cols: &[u32], vals: &[f32], n: usize) -> Csr {
-    let mut tri: sprs::TriMatI<f32, usize> = sprs::TriMatI::with_capacity((n, n), rows.len());
-    for ((&r, &c), &v) in rows.iter().zip(cols.iter()).zip(vals.iter()) {
-        tri.add_triplet(r as usize, c as usize, v);
-    }
-    tri.to_csr()
-}
-
-fn csr_to_dense(p: &Csr) -> Array2<f32> {
-    let (m, n) = (p.rows(), p.cols());
-    let mut d = Array2::<f32>::zeros((m, n));
-    let buf = d.as_slice_mut().expect("dense contig");
-    for (i, p_row) in p.outer_iterator().enumerate() {
-        let cols = p_row.indices();
-        let vals = p_row.data();
-        for (k, &v) in cols.iter().zip(vals.iter()) {
-            buf[i * n + k] = v;
-        }
-    }
-    d
-}
 
 // ---------------------------------------------------------------------------
 // 2-D separable Gaussian convolution on a dense ndarray, mirror-padded.
@@ -78,23 +60,6 @@ fn gaussian_kernel_1d(std: f32, truncate: i32) -> Vec<f32> {
     k
 }
 
-fn _mirror_index(i: i32, n: i32) -> usize {
-    // scipy 'mirror' mode: reflect without repeating the edge value.
-    // Period = 2 * (n - 1).
-    if n == 1 {
-        return 0;
-    }
-    let period = 2 * (n - 1);
-    let mut x = i % period;
-    if x < 0 {
-        x += period;
-    }
-    if x >= n {
-        x = period - x;
-    }
-    x as usize
-}
-
 fn gaussian_filter_2d(a: &Array2<f32>, std: f32, truncate: i32) -> Array2<f32> {
     if std <= 0.0 {
         return a.clone();
@@ -114,7 +79,7 @@ fn gaussian_filter_2d(a: &Array2<f32>, std: f32, truncate: i32) -> Array2<f32> {
             for j in 0..n {
                 let mut acc = 0.0_f32;
                 for (kx, &kv) in kernel.iter().enumerate() {
-                    let src_j = _mirror_index(j as i32 + (kx as i32 - lw), n as i32);
+                    let src_j = mirror_index(j as i32 + (kx as i32 - lw), n as i32);
                     acc += kv * a_buf[row_start + src_j];
                 }
                 out_row[j] = acc;
@@ -132,7 +97,7 @@ fn gaussian_filter_2d(a: &Array2<f32>, std: f32, truncate: i32) -> Array2<f32> {
             for j in 0..n {
                 let mut acc = 0.0_f32;
                 for (kx, &kv) in kernel.iter().enumerate() {
-                    let src_i = _mirror_index(i as i32 + (kx as i32 - lw), m as i32);
+                    let src_i = mirror_index(i as i32 + (kx as i32 - lw), m as i32);
                     acc += kv * tmp_buf2[src_i * n + j];
                 }
                 out_row[j] = acc;
@@ -201,34 +166,6 @@ fn frobenius_diff_dense(a: &Array2<f32>, b: &Array2<f32>) -> f32 {
 //
 // Storage: `data[i * (2b+1) + (j - i + b)]` is M[i, j] for |j-i| ≤ b.
 // ---------------------------------------------------------------------------
-
-#[inline]
-fn band_w(b: usize) -> usize { 2 * b + 1 }
-
-#[inline]
-fn band_idx(i: usize, j: usize, b: usize) -> Option<usize> {
-    let d = j as i64 - i as i64;
-    if d.abs() > b as i64 {
-        None
-    } else {
-        Some((d + b as i64) as usize)
-    }
-}
-
-/// Materialise a Banded view of a CSR matrix — out-of-band entries dropped.
-fn csr_to_banded(p: &Csr, b: usize) -> Vec<f32> {
-    let n = p.rows();
-    let bw = band_w(b);
-    let mut data = vec![0.0_f32; n * bw];
-    for (i, p_row) in p.outer_iterator().enumerate() {
-        for (k, &v) in p_row.indices().iter().zip(p_row.data().iter()) {
-            if let Some(off) = band_idx(i, *k, b) {
-                data[i * bw + off] = v;
-            }
-        }
-    }
-    data
-}
 
 /// Banded SpMM: `R = P · Q` keeping only (|j − i| ≤ b) entries. Both
 /// operands stored banded, output stored banded.
