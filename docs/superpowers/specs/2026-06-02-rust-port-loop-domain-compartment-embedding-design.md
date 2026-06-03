@@ -42,32 +42,34 @@ Extend the existing `schicluster_rs` Rust kernel (currently: `random_walk_cpu`, 
 
 | Role | Env path | Python | Purpose |
 |---|---|---|---|
-| `$PYTHON_REF_ENV` | `/home/shengmao/miniconda/envs/schicluster` | 3.6 | Runs `tests/py_reference_driver.py`; has upstream `schicluster` editable |
+| `$PYTHON_REF_ENV` | `/home/shengmao/miniconda/envs/schicluster` | 3.6 | Runs `tests/py_reference_driver.py`; has upstream `schicluster` editable. **Also has R + rpy2 + the `Matrix` R package** (R_HOME set by `conda activate`), so it runs the upstream TopDom-via-rpy2 path directly — confirmed: `hicluster domain` already works here. **TopDom reference comes from this env**, no separate R env needed. |
 | `$RUST_TEST_ENV` | `/home/shengmao/miniconda/envs/rebuild-rust` | 3.10.20 | Runs `tests/_run_candidate.py`; needs `maturin`, `cooler`, `scipy`, `numpy`, `pandas`, `pytest`, the built `schicluster_rs` extension |
-| `$TOPDOM_REF_ENV` | `/home/shengmao/miniconda/envs/rpy` | (R 4.3.3) | Runs `Rscript tests/gen_topdom_ref.R`; has the R install needed to execute `schicluster/domain/TopDom.R` directly |
 
 `rebuild-rust` is currently empty of project deps — provisioning is part of phase implementation, not part of the spec. The Rust toolchain (`cargo 1.95.0`, `rustc 1.95.0`) is already on `PATH` via rustup at `/home/shengmao/.cargo/bin/`.
 
-**Cross-env parity flow** (no env can `import` both packages):
+**Cross-env parity flow** (single-process "import both" is impossible because `schicluster_rs` is `abi3-py39` and the schicluster env is py 3.6; so it's dump-and-compare across two envs):
 
 ```
-                     ┌──────────────────────────────────────────────┐
-                     │ data/fixtures/<chrom>.npz, <group>.cool, ... │
-                     └────────────┬─────────────────────────────────┘
-                                  │
-   ┌──────────────────────────────┼──────────────────────────────┐
-   ▼                              ▼                              ▼
-$PYTHON_REF_ENV              $TOPDOM_REF_ENV               $RUST_TEST_ENV
-schicluster py-3.6           R 4.3.3 + Rscript             rebuild-rust py-3.10
-py_reference_driver.py       gen_topdom_ref.R              _run_candidate.py
-        │                            │                            │
-        ▼                            ▼                            ▼
- ref/<fn>_py.npz/json          ref/topdom_<chrom>.bed       cand/<fn>_rs.npz/json
-        └───────────────┬────────────┴────────────────┬───────────┘
-                        ▼                             ▼
-                  tests/test_exact_match.py (in $RUST_TEST_ENV)
-                  → engine.parity_metrics.compute_parity / is_pass
-                  → assert per-output gates from data/manifest.yaml
+                  ┌──────────────────────────────────────────────┐
+                  │ data/fixtures/<chrom>.npz, <group>.cool, ... │
+                  └────────────┬─────────────────────────────────┘
+                               │
+            ┌──────────────────┴──────────────────┐
+            ▼                                     ▼
+      $PYTHON_REF_ENV                       $RUST_TEST_ENV
+      schicluster py-3.6                    rebuild-rust py-3.10
+      (incl. rpy2 + R + TopDom)             (maturin + schicluster_rs)
+      py_reference_driver.py                _run_candidate.py
+            │                                     │
+            ▼                                     ▼
+       ref/<fn>_py.json                     cand/<fn>_rs.json
+       (incl. ref/topdom.bed                (incl. cand/topdom.bed
+        from rpy2 → TopDom.R)                from Rust topdom.rs)
+            └─────────────────┬───────────────────┘
+                              ▼
+               tests/test_exact_match.py (in $RUST_TEST_ENV)
+               → engine.parity_metrics.compute_parity / is_pass
+               → assert per-output gates from data/manifest.yaml
 ```
 
 ## 4. Repo layout additions
@@ -95,10 +97,9 @@ rust-scHiCluster/
 │   ├── test_parity.py               (existing — kept; legacy unit parity for random_walk_cpu)
 │   ├── test_exact_match.py          (NEW — rebuildpy gate against manifest.yaml)
 │   ├── test_smoke.py                (NEW — import + run end-to-end on fixture)
-│   ├── py_reference_driver.py       (NEW — runs upstream in $PYTHON_REF_ENV)
+│   ├── py_reference_driver.py       (NEW — runs upstream in $PYTHON_REF_ENV, incl. TopDom via rpy2)
 │   ├── _run_candidate.py            (NEW — runs schicluster_rs in $RUST_TEST_ENV)
-│   ├── gen_topdom_ref.R             (NEW — runs TopDom.R via Rscript in $TOPDOM_REF_ENV)
-│   └── run_parity.sh                (NEW — orchestrates the 3 envs)
+│   └── run_parity.sh                (NEW — orchestrates the 2 envs via `conda run -n …`)
 ├── data/
 │   ├── manifest.yaml                (NEW — pre-registered gate, READ-ONLY after Phase 3 starts)
 │   └── fixtures/                    (NEW — small synthetic + a real small chrom)
@@ -196,11 +197,10 @@ Anything that reorders a `sum` across threads — most rayon reductions — gets
 
 ## 8. Verification harness
 
-- `tests/py_reference_driver.py` (run in `$PYTHON_REF_ENV`): for each fixture, calls the **pure-Python** upstream `schicluster` functions directly — loop_bkg, merge, scan, find_summit, **insulation_score**, compartment, embedding-matrix — dumps a per-output JSON with keys matching the manifest. **TopDom is intentionally skipped here** since its upstream Python wrapper invokes R via rpy2, which is broken in `$PYTHON_REF_ENV` (no R_HOME). The TopDom reference comes from `$TOPDOM_REF_ENV` instead.
-- `tests/gen_topdom_ref.R` (run in `$TOPDOM_REF_ENV` via `Rscript`): sources `schicluster/domain/TopDom.R`, runs `RunTopDom` on each fixture chrom matrix, dumps `topdom.bed` JSON. Independent of rpy2 — this is the canonical ground truth for `topdom.bed`.
-- `tests/_run_candidate.py` (run in `$RUST_TEST_ENV`): imports `schicluster_rs`, runs the Rust wrappers on the same fixtures, dumps per-output JSON.
+- `tests/py_reference_driver.py` (run in `$PYTHON_REF_ENV`): for each fixture, calls every upstream `schicluster` reference path directly — loop_bkg, merge, scan, find_summit, **insulation_score**, **TopDom via the existing rpy2 → `TopDom.R` wrapper** (`schicluster.domain.call_domain.run_top_dom` style), compartment, embedding-matrix. Dumps a per-output JSON with keys matching the manifest. The schicluster env has working R + rpy2 + the `Matrix` R package once activated, so TopDom is the canonical reference here — no separate R env needed.
+- `tests/_run_candidate.py` (run in `$RUST_TEST_ENV`): imports `schicluster_rs`, runs the Rust wrappers on the same fixtures, dumps per-output JSON with the same keys.
 - `tests/test_exact_match.py` (run in `$RUST_TEST_ENV`): loads both dumps, applies `engine/parity_metrics.compute_parity` per manifest output, asserts `is_pass`.
-- `tests/run_parity.sh`: orchestrates `conda run -n schicluster …`, `conda run -n rpy Rscript …`, `conda run -n rebuild-rust pytest …`.
+- `tests/run_parity.sh`: orchestrates two `conda run` invocations — `conda run -n schicluster python tests/py_reference_driver.py …` then `conda run -n rebuild-rust pytest -q tests/test_exact_match.py`.
 
 **Fixtures** (`data/fixtures/`):
 - `synthetic_<n>.npz` (n ∈ {64, 256, 1024}): seeded synthetic upper-tri sparse matrices for fast unit parity per leaf.
