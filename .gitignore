@@ -129,3 +129,4 @@ target/
 
 # maturin
 *.whl
+data/fixtures/*.npz
