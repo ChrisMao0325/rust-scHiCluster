@@ -22,6 +22,7 @@
 //!   epione Python wrapper calls this and just hands the result to
 //!   the cooler/HDF5 writer.
 mod utils;
+mod conv;
 
 use utils::{
     band_idx, band_w, csr_to_banded, csr_to_dense, mirror_index, triplets_to_csr, Csr,
@@ -728,5 +729,6 @@ fn _rust(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(py_random_walk_cpu_csr, m)?)?;
     m.add_function(wrap_pyfunction!(py_impute_chromosome_inner, m)?)?;
     m.add_function(wrap_pyfunction!(set_num_threads, m)?)?;
+    m.add_function(wrap_pyfunction!(conv::py_convolve2d_mirror, m)?)?;
     Ok(())
 }
