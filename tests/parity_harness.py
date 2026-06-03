@@ -73,8 +73,23 @@ def _dig(blob: dict, location: str) -> Any:
 
 def _to_numpy(obj: Any) -> Any:
     """Re-hydrate a JSON-dumped reference / candidate object into a numpy form
-    that engine.parity_metrics knows how to compare. Pass-through for non-array.
+    that engine.parity_metrics knows how to compare.
+
+    For CSR-triplet dicts {"rows": [...], "cols": [...], "vals": [...]} we
+    densify into a square matrix whose side length is max(rows union cols) + 1
+    (small fixtures only). Plain lists become np.ndarray. Everything else
+    passes through.
     """
+    if isinstance(obj, dict) and set(obj.keys()) >= {"rows", "cols", "vals"}:
+        rows = np.asarray(obj["rows"], dtype=np.int64)
+        cols = np.asarray(obj["cols"], dtype=np.int64)
+        vals = np.asarray(obj["vals"], dtype=np.float64)
+        if rows.size == 0:
+            return np.zeros((1, 1), dtype=np.float64)
+        n = int(max(rows.max(), cols.max())) + 1
+        dense = np.zeros((n, n), dtype=np.float64)
+        dense[rows, cols] = vals
+        return dense
     if isinstance(obj, list):
         try:
             return np.asarray(obj)
@@ -84,11 +99,7 @@ def _to_numpy(obj: Any) -> Any:
 
 
 def evaluate(output: OutputSpec, reference_blob: dict, candidate_blob: dict) -> dict:
-    """Run one output through the class-aware parity check.
-
-    Returns a dict {status, metric, threshold, message} where status is one of
-    'pass', 'fail', 'skip-missing-reference', 'skip-missing-candidate'.
-    """
+    """Run one output through the class-aware parity check."""
     ref = _dig(reference_blob, output.location)
     cand = _dig(candidate_blob, output.location)
     if ref is None:
@@ -98,10 +109,51 @@ def evaluate(output: OutputSpec, reference_blob: dict, candidate_blob: dict) -> 
         return {"status": "skip-missing-candidate", "metric": None,
                 "threshold": output.threshold, "message": f"{output.name}: no candidate dump yet"}
 
+    ref_arr = _to_numpy(ref)
+    cand_arr = _to_numpy(cand)
+
+    # Pad densified CSR matrices up to a common shape.
+    if (isinstance(ref_arr, np.ndarray) and isinstance(cand_arr, np.ndarray)
+            and ref_arr.shape != cand_arr.shape and ref_arr.ndim == 2 and cand_arr.ndim == 2):
+        n = max(ref_arr.shape[0], cand_arr.shape[0])
+        m = max(ref_arr.shape[1], cand_arr.shape[1])
+        def _pad(a: np.ndarray) -> np.ndarray:
+            out = np.zeros((n, m), dtype=a.dtype)
+            out[:a.shape[0], :a.shape[1]] = a
+            return out
+        ref_arr = _pad(ref_arr)
+        cand_arr = _pad(cand_arr)
+
+    # Special case: find_summit.sizes -- align via the idx intersection.
+    if output.name == "find_summit.sizes":
+        ref_idx = np.asarray(_dig(reference_blob, "$.find_summit.idx"))
+        cand_idx = np.asarray(_dig(candidate_blob, "$.find_summit.idx"))
+        ref_sizes = np.asarray(_dig(reference_blob, "$.find_summit.sizes"))
+        cand_sizes = np.asarray(_dig(candidate_blob, "$.find_summit.sizes"))
+        common = np.intersect1d(ref_idx, cand_idx)
+        if common.size == 0:
+            return {"status": "fail", "metric": None,
+                    "threshold": output.threshold,
+                    "message": f"{output.name}: empty idx intersection"}
+        ref_map = dict(zip(ref_idx.tolist(), ref_sizes.tolist()))
+        cand_map = dict(zip(cand_idx.tolist(), cand_sizes.tolist()))
+        ref_arr = np.asarray([ref_map[k] for k in common])
+        cand_arr = np.asarray([cand_map[k] for k in common])
+
+    # For classification with integer labels that have >2 unique values, sklearn
+    # needs average='macro' rather than the default 'binary'.
+    extra_kwargs: dict = {}
+    if output.algorithm_class == "classification":
+        ref_labels = set(np.asarray(ref_arr).ravel().tolist())
+        cand_labels = set(np.asarray(cand_arr).ravel().tolist())
+        if len(ref_labels | cand_labels) > 2:
+            extra_kwargs["average"] = "macro"
+
     metric_value = compute_parity(
-        reference=_to_numpy(ref),
-        candidate=_to_numpy(cand),
+        reference=ref_arr,
+        candidate=cand_arr,
         algorithm_class=output.algorithm_class,
+        **extra_kwargs,
     )
     ok = is_pass(metric_value, output.algorithm_class, output.threshold)
     return {

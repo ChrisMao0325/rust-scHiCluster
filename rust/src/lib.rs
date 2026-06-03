@@ -23,6 +23,10 @@
 //!   the cooler/HDF5 writer.
 mod utils;
 mod conv;
+mod find_summit;
+mod loop_bkg;
+mod merge;
+mod scan_kernels;
 
 use utils::{
     band_idx, band_w, csr_to_banded, csr_to_dense, mirror_index, triplets_to_csr, Csr,
@@ -730,5 +734,9 @@ fn _rust(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(py_impute_chromosome_inner, m)?)?;
     m.add_function(wrap_pyfunction!(set_num_threads, m)?)?;
     m.add_function(wrap_pyfunction!(conv::py_convolve2d_mirror, m)?)?;
+    m.add_function(wrap_pyfunction!(loop_bkg::py_loop_bkg_chrom, m)?)?;
+    m.add_function(wrap_pyfunction!(merge::py_merge_cells_sum, m)?)?;
+    m.add_function(wrap_pyfunction!(scan_kernels::py_scan_kernels_chrom, m)?)?;
+    m.add_function(wrap_pyfunction!(find_summit::py_find_summit_chrom, m)?)?;
     Ok(())
 }

@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "schicluster-rs"
-version = "0.2.0.dev0"
+version = "0.2.0"
 description = "Rust port of scHiCluster's impute_chromosome inner pipeline — drop-in replacement for the published Python implementation. Bit-equivalent numerical behaviour, up to ~10× faster on long Hi-C chromosomes."
 readme = "README.md"
 license = {text = "MIT"}

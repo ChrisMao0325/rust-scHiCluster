@@ -28,5 +28,7 @@ conda run -n "$RUST_TEST_ENV" --no-capture-output \
     python tests/_run_candidate.py
 
 echo "[3/3] Run parity gate (env: $RUST_TEST_ENV)"
-conda run -n "$RUST_TEST_ENV" --no-capture-output \
-    pytest -q tests/test_exact_match.py
+# Use PYTHONNOUSERSITE=1 and an explicit python -m pytest invocation so that
+# ~/.local site-packages (e.g. a conflicting scikit-learn build) are ignored.
+PYTHONNOUSERSITE=1 conda run -n "$RUST_TEST_ENV" --no-capture-output \
+    python -m pytest -q tests/test_exact_match.py
