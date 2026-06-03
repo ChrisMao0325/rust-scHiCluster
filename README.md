@@ -119,6 +119,46 @@ A Rust-backed snakemake template ships at
 transparently uses the Rust kernels. Drop it into your workflow as a
 replacement for upstream's `loop/snakemake_template_loop.txt`.
 
+### Command-line tool
+
+A thin `schicluster-rs` CLI wraps a handful of `hicluster` subcommands —
+it pre-applies `patch_schicluster()`, then hands argv off to upstream's
+argparse. Swap `hicluster` → `schicluster-rs` in your scripts to get the
+Rust backend with no other changes.
+
+Currently exposed (all other subcommands: use `hicluster` directly):
+
+| Subcommand | Notes |
+|---|---|
+| `schicluster-rs filter-contact ...` | Pure I/O passthrough. No per-call Rust speedup; included so a single binary covers the full pipeline. |
+| `schicluster-rs prepare-impute ...` | Generates the snakemake workflow. The fanned-out `hic-internal impute-chromosome` rules still need `schicluster_rs` importable in each worker for the per-chrom kernel to route through Rust (e.g. via a sitecustomize that calls `patch_schicluster()`). |
+
+Concrete example from `ProstateCancer/example_notebook/imputation.md`:
+
+```bash
+# Blacklist-filter contact pairs (no Rust speedup, just a single binary)
+schicluster-rs filter-contact \
+    --output_dir rmbkl/ \
+    --blacklist_1d_path mm10-blacklist.v2.bed.gz \
+    --chr1 1 --pos1 2 --chr2 3 --pos2 4 \
+    --contact_table contact_table.tsv \
+    --chrom_size_path chrom_sizes.txt
+
+# Generate the per-chunk Snakefiles for imputation
+schicluster-rs prepare-impute \
+    --cell_table contact_table_rmbkl.tsv \
+    --batch_size 1536 --pad 1 --cpu_per_job 96 \
+    --chr1 1 --pos1 2 --chr2 3 --pos2 4 \
+    --output_dir impute/100K/ \
+    --chrom_size_path chrom_sizes.txt \
+    --output_dist 500000000 --window_size 500000000 --step_size 500000000 \
+    --resolution 100000
+```
+
+Run `schicluster-rs --help` for the dispatcher help, or
+`schicluster-rs <subcommand> --help` for upstream's per-subcommand
+options.
+
 ## Citation
 
 If you use this package, please cite the original scHiCluster paper:
