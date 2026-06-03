@@ -12,12 +12,22 @@ Run order:
   3. (in $RUST_TEST_ENV)  pytest -q tests/test_exact_match.py
 
 The wrapper tests/run_parity.sh chains the three.
+
+The first import below short-circuits the whole module to "skipped" on
+machines without rebuildpy (CI runners that don't check it out, fresh
+contributor envs); the legacy `test_parity.py` still runs in those cases.
 """
 from __future__ import annotations
 
 import pytest
 
-from .parity_harness import OutputSpec, evaluate, load_dumps, load_outputs
+pytest.importorskip(
+    "engine.parity_metrics",
+    reason="rebuildpy not on PYTHONPATH — set REBUILDPY_DIR or `git clone "
+    "https://github.com/omicverse/rebuildpy` next to this repo to run the manifest gate.",
+)
+
+from .parity_harness import OutputSpec, evaluate, load_dumps, load_outputs  # noqa: E402
 
 
 _OUTPUTS = load_outputs()

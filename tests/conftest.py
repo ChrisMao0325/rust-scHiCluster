@@ -1,6 +1,12 @@
-"""Wire the rebuildpy engine into pytest sys.path.
+"""Wire the rebuildpy engine into pytest sys.path if available.
 
-Override the rebuildpy location with REBUILDPY_DIR.
+The manifest-driven `test_exact_match.py` needs `engine.parity_metrics` from
+the rebuildpy kit (default `/large_storage/zhoulab/shengmao/rebuildpy`, override
+with `REBUILDPY_DIR`). When rebuildpy is missing — e.g. CI runners that haven't
+checked it out, or fresh contributor machines — we silently skip the path
+injection. `test_exact_match.py` then guards its import with `pytest.importorskip`
+so the manifest gate collects-and-skips cleanly while the rest of the suite
+(notably the legacy `test_parity.py`) still runs.
 """
 from __future__ import annotations
 
@@ -11,13 +17,5 @@ import sys
 
 _DEFAULT_REBUILDPY = "/large_storage/zhoulab/shengmao/rebuildpy"
 _REBUILDPY = pathlib.Path(os.environ.get("REBUILDPY_DIR", _DEFAULT_REBUILDPY))
-if not _REBUILDPY.exists():
-    raise SystemExit(
-        f"REBUILDPY_DIR={_REBUILDPY} does not exist. Set REBUILDPY_DIR to your "
-        f"rebuildpy checkout (the dir containing engine/parity_metrics.py)."
-    )
-if str(_REBUILDPY) not in sys.path:
+if _REBUILDPY.exists() and str(_REBUILDPY) not in sys.path:
     sys.path.insert(0, str(_REBUILDPY))
-
-# Sanity check — fail loudly here rather than from inside test bodies.
-from engine import parity_metrics  # noqa: E402,F401
