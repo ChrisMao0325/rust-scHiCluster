@@ -1,0 +1,163 @@
+# Pre-registered parity gate for schicluster-rs (loop / domain / compartment / embedding / merge ports).
+#
+# READ-ONLY after Phase 3 (the agent loop) starts.
+# DO NOT tighten or loosen `threshold` to make a port pass.
+
+package: schicluster-rs
+upstream:
+  name: scHiCluster
+  version: "1.3.5.dev22+gd566046"
+  source: local-editable
+  url: /large_storage/zhoulab/shengmao/scHiCluster
+
+# Default class for the bulk of outputs; per-output blocks override.
+algorithm_class: deterministic-bounded
+parity_threshold: 1.0e-6
+
+reference_command: tests/py_reference_driver.py
+seed: 42
+
+fixture:
+  path: data/fixtures/conv_small.npz
+  source: synthetic (data/fixtures/synthesize.py, seed=42)
+  description: "64x64 f32 input + 7x7 donut-shaped f32 kernel; reference scipy.ndimage.convolve(mode='mirror')"
+  expected_shape: [64, 64]
+
+outputs:
+  # ---- Phase 0 (this plan) ----
+  - name: conv.convolved
+    type: "2d f32 matrix"
+    location_reference: "$.convolved"
+    location_candidate: "$.convolved"
+    metric: deterministic
+    algorithm_class: deterministic-bounded
+    threshold: 1.0e-6
+
+  # ---- Phase 1 (loop) — references will be added by py_reference_driver.py in Plan 2 ----
+  - name: loop_bkg.E
+    type: "sparse CSR triplets (f32)"
+    location_reference: "$.loop_bkg.E"
+    location_candidate: "$.loop_bkg.E"
+    metric: deterministic
+    algorithm_class: deterministic-bounded
+    threshold: 1.0e-6
+  - name: loop_bkg.T
+    type: "sparse CSR triplets (f32)"
+    location_reference: "$.loop_bkg.T"
+    location_candidate: "$.loop_bkg.T"
+    metric: deterministic
+    algorithm_class: deterministic-bounded
+    threshold: 1.0e-6
+  - name: merge.e_sum
+    type: "sparse CSR triplets (f32)"
+    location_reference: "$.merge.e_sum"
+    location_candidate: "$.merge.e_sum"
+    metric: deterministic
+    algorithm_class: deterministic-bounded
+    threshold: 1.0e-6
+  - name: merge.e2_sum
+    type: "sparse CSR triplets (f32)"
+    location_reference: "$.merge.e2_sum"
+    location_candidate: "$.merge.e2_sum"
+    metric: deterministic
+    algorithm_class: deterministic-bounded
+    threshold: 1.0e-6
+  - name: scan_kernels.bl
+    type: "1d f32 array"
+    location_reference: "$.scan_kernels.bl"
+    location_candidate: "$.scan_kernels.bl"
+    metric: deterministic
+    algorithm_class: deterministic-bounded
+    threshold: 1.0e-6
+  - name: scan_kernels.donut
+    type: "1d f32 array"
+    location_reference: "$.scan_kernels.donut"
+    location_candidate: "$.scan_kernels.donut"
+    metric: deterministic
+    algorithm_class: deterministic-bounded
+    threshold: 1.0e-6
+  - name: scan_kernels.h
+    type: "1d f32 array"
+    location_reference: "$.scan_kernels.h"
+    location_candidate: "$.scan_kernels.h"
+    metric: deterministic
+    algorithm_class: deterministic-bounded
+    threshold: 1.0e-6
+  - name: scan_kernels.v
+    type: "1d f32 array"
+    location_reference: "$.scan_kernels.v"
+    location_candidate: "$.scan_kernels.v"
+    metric: deterministic
+    algorithm_class: deterministic-bounded
+    threshold: 1.0e-6
+  - name: find_summit.idx
+    type: "1d u32 array (selected pixel indices)"
+    location_reference: "$.find_summit.idx"
+    location_candidate: "$.find_summit.idx"
+    metric: ranked
+    algorithm_class: ranked
+    threshold: 0.99   # set-Jaccard
+  - name: find_summit.sizes
+    type: "1d u32 array (cluster sizes, aligned with idx intersection)"
+    location_reference: "$.find_summit.sizes"
+    location_candidate: "$.find_summit.sizes"
+    metric: classification
+    algorithm_class: classification
+    threshold: 1.0    # exact agreement over the matched intersection
+
+  # ---- Phase 2 (domain) ----
+  - name: insulation.score
+    type: "1d f32 array"
+    location_reference: "$.insulation.score"
+    location_candidate: "$.insulation.score"
+    metric: deterministic
+    algorithm_class: deterministic-bounded
+    threshold: 1.0e-6
+  - name: topdom.bed.interval_jaccard
+    type: "interval set (chrom, start, end)"
+    location_reference: "$.topdom.bed"
+    location_candidate: "$.topdom.bed"
+    metric: ranked
+    algorithm_class: ranked
+    threshold: 0.95
+  - name: topdom.bed.bin_label_agreement
+    type: "per-bin tag labels (gap / domain / boundary)"
+    location_reference: "$.topdom.bed"
+    location_candidate: "$.topdom.bed"
+    metric: classification
+    algorithm_class: classification
+    threshold: 0.98
+
+  # ---- Phase 3 (compartment) ----
+  - name: compartment.comp
+    type: "1d f64 array"
+    location_reference: "$.compartment.comp"
+    location_candidate: "$.compartment.comp"
+    metric: deterministic
+    algorithm_class: deterministic-bounded
+    threshold: 1.0e-6
+  - name: compartment.strength
+    type: "1d f64 array [AA, BB, AB]"
+    location_reference: "$.compartment.strength"
+    location_candidate: "$.compartment.strength"
+    metric: deterministic
+    algorithm_class: deterministic-bounded
+    threshold: 1.0e-6
+
+  # ---- Phase 4 (embedding) ----
+  - name: embedding.cell_by_feature
+    type: "2d f32 matrix"
+    location_reference: "$.embedding.cell_by_feature"
+    location_candidate: "$.embedding.cell_by_feature"
+    metric: deterministic
+    algorithm_class: deterministic-strict
+    threshold: 0.0     # exact f32 bit-equality (pure index+scale, no reduction)
+
+acceleration:
+  enabled: true
+  max_iterations: 50
+  must_pass_gate: true
+
+audit_class: null
+created_by: schicluster-rs port
+created_at: 2026-06-02
