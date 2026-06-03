@@ -63,7 +63,7 @@ impute_chromosome(scool_url='cell.cool', chrom='chr1',
                   output_dist=10_050_000)
 ```
 
-**Direct — loop path** (Phase 1, available since 0.2.0):
+**Direct — loop path** :
 
 ```python
 import schicluster_rs
@@ -87,30 +87,6 @@ bl, donut, h, v = schicluster_rs.loop_background(E, pad=5, gap=2, loop=(xs, ys))
 # Graph + heap peak merging:
 summit_df = schicluster_rs.find_summit(loop_df, res=10_000, dist_thres=2)
 ```
-
-### Multi-process tuning
-
-`schicluster`'s default workflow is `ProcessPoolExecutor(max_workers=N)`.
-Each worker forks the rayon thread pool — without explicit sizing, every
-worker spawns `num_cpus` threads, leading to `N × num_cpus` contending
-threads on a single node.
-
-Set the per-worker rayon thread count via `set_num_threads(n)` in the
-worker initialiser. Recommended sizing: `n = num_cpus // num_workers`.
-Example: 16-core node with 8 workers → `set_num_threads(2)`.
-
-```python
-from concurrent.futures import ProcessPoolExecutor
-import schicluster_rs
-
-def worker_init():
-    schicluster_rs.set_num_threads(2)
-    schicluster_rs.patch_schicluster()
-
-with ProcessPoolExecutor(max_workers=8, initializer=worker_init) as ex:
-    list(ex.map(impute_one_cell, cells))
-```
-
 ### Snakemake (loop calling)
 
 A Rust-backed snakemake template ships at
@@ -132,8 +108,6 @@ Currently exposed (all other subcommands: use `hicluster` directly):
 |---|---|
 | `schicluster-rs filter-contact ...` | Pure I/O passthrough. No per-call Rust speedup; included so a single binary covers the full pipeline. |
 | `schicluster-rs prepare-impute ...` | Generates the snakemake workflow. The fanned-out `hic-internal impute-chromosome` rules still need `schicluster_rs` importable in each worker for the per-chrom kernel to route through Rust (e.g. via a sitecustomize that calls `patch_schicluster()`). |
-
-Concrete example from `ProstateCancer/example_notebook/imputation.md`:
 
 ```bash
 # Blacklist-filter contact pairs (no Rust speedup, just a single binary)
