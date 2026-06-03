@@ -130,3 +130,5 @@ target/
 # maturin
 *.whl
 data/fixtures/*.npz
+data/fixtures/reference_output.json
+data/fixtures/candidate_output.json
