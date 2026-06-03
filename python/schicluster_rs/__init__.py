@@ -25,6 +25,11 @@ try:
     from schicluster_rs._rust import (
         py_random_walk_cpu_csr as _rwr_csr,
         py_impute_chromosome_inner as _impute_inner,
+        py_convolve2d_mirror as _conv2d_mirror,
+        py_loop_bkg_chrom as _loop_bkg_chrom,
+        py_merge_cells_sum as _merge_cells_sum,
+        py_scan_kernels_chrom as _scan_kernels_chrom,
+        py_find_summit_chrom as _find_summit_chrom,
         set_num_threads as _set_num_threads,
     )
     _RUST_AVAILABLE = True
@@ -178,6 +183,35 @@ def impute_chromosome(scool_url, chrom, resolution, output_path,
             hdf[f"c{i}"] = df.iloc[chunk_start:chunk_start + chunk_size]
 
 
+def convolve2d_mirror(a, kernel):
+    """2-D convolution matching ``scipy.ndimage.convolve(a, kernel, mode='mirror')``.
+
+    Both ``a`` and ``kernel`` must be C-contiguous ``np.float32``. Returns a
+    ``np.float32`` array of the same shape as ``a``.
+
+    Shared primitive for the loop module's background normalisation
+    (``loop_bkg``) and loop-candidate background scan (``scan_kernel``).
+    """
+    if not _RUST_AVAILABLE:
+        from scipy.ndimage import convolve
+        return convolve(a, kernel, mode="mirror")
+    a32 = np.ascontiguousarray(a, dtype=np.float32)
+    k32 = np.ascontiguousarray(kernel, dtype=np.float32)
+    return _conv2d_mirror(a32, k32)
+
+
+from schicluster_rs.loop import (
+    loop_bkg_chrom,
+    merge_cells_for_single_chromosome,
+    loop_background as _loop_background,
+    find_summit as _find_summit,
+)
+
+# Re-exports for the public API surface declared in __all__.
+loop_background = _loop_background
+find_summit = _find_summit
+
+
 def patch_schicluster() -> bool:
     """Monkey-patch ``schicluster.impute.impute_chromosome.random_walk_cpu``
     to use the Rust kernel.
@@ -195,11 +229,19 @@ def patch_schicluster() -> bool:
     if not _RUST_AVAILABLE:
         return False
     try:
-        from schicluster.impute import impute_chromosome as _mod
-        _mod.random_walk_cpu = random_walk_cpu
+        from schicluster.impute import impute_chromosome as _impute_mod
+        _impute_mod.random_walk_cpu = random_walk_cpu
         # Also rebind the top-level impute_chromosome (the function the
         # caller actually calls) — this is the big win.
-        _mod.impute_chromosome = impute_chromosome
+        _impute_mod.impute_chromosome = impute_chromosome
+        # ---- loop module ----
+        from schicluster.loop import loop_bkg as _loop_bkg_mod
+        from schicluster.loop import merge_cell_to_group as _merge_mod
+        from schicluster.loop import loop_calling as _loop_calling_mod
+        _loop_bkg_mod.calculate_chrom_background_normalization = loop_bkg_chrom
+        _merge_mod.merge_cells_for_single_chromosome = merge_cells_for_single_chromosome
+        _loop_calling_mod.loop_background = _loop_background
+        _loop_calling_mod.find_summit = _find_summit
         return True
     except ImportError:
         return False
@@ -207,5 +249,7 @@ def patch_schicluster() -> bool:
 
 __all__ = [
     "random_walk_cpu", "impute_chromosome", "patch_schicluster",
-    "set_num_threads",
+    "set_num_threads", "convolve2d_mirror",
+    "loop_bkg_chrom", "merge_cells_for_single_chromosome",
+    "loop_background", "find_summit",
 ]

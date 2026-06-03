@@ -1,0 +1,58 @@
+# Rust-backed snakemake template for scHiCluster loop calling.
+#
+# Adapted from schicluster/loop/snakemake_template_loop.txt: prepends a
+# `patch_schicluster()` call so every loop rule executed by this workflow
+# routes through schicluster_rs's Rust kernels (loop_bkg, merge, scan
+# kernels, find_summit). Upstream Python `call_loop` orchestration is
+# preserved; only the per-chrom numerical inner functions are replaced.
+#
+# Variables expected on the snakemake command line (set via --config or
+# the `prepare_dir` helper that writes a parameter block before this
+# template):
+#   chrom_size_path, resolution, cpu, black_list_path,
+#   e_positive_only, use_bkfilter
+
+import schicluster_rs
+# Per-worker rayon thread sizing: typical Hi-C loop workflow uses
+# ProcessPoolExecutor(max_workers=N) under the hood. Setting threads = 2
+# under 8 workers keeps the 16-core sweet spot for most clusters; raise
+# if your `cpu` parameter is larger.
+schicluster_rs.set_num_threads(2)
+schicluster_rs.patch_schicluster()
+
+from schicluster.loop import call_loop
+
+
+rule call_loop:
+    input:
+        'cell_table.csv'
+    output:
+        'Success'
+    run:
+        call_loop(
+            cell_table_path='cell_table.csv',
+            output_dir='./',
+            chrom_size_path=chrom_size_path,
+            shuffle=True,
+            chunk_size=200,
+            dist=5050000,
+            cap=5,
+            pad=5,
+            gap=2,
+            resolution=resolution,
+            min_cutoff=1e-06,
+            keep_cell_matrix=False,
+            cpu_per_job=cpu,
+            log_e=True,
+            raw_resolution_str=None,
+            downsample_shuffle=500,
+            black_list_path=black_list_path,
+            fdr_pad=7,
+            fdr_min_dist=5,
+            fdr_max_dist=500,
+            fdr_thres=0.1,
+            dist_thres=20000,
+            size_thres=1,
+            e_positive_only=e_positive_only,
+            use_bkfilter=use_bkfilter,
+        )
