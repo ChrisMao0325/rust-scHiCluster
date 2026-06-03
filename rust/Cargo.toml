@@ -1,6 +1,6 @@
 [package]
 name = "schicluster_rs"
-version = "0.1.1"
+version = "0.2.0-dev0"
 edition = "2021"
 description = "Rust port of scHiCluster's impute_chromosome inner pipeline."
 license = "MIT"

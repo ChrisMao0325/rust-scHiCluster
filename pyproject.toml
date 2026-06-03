@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "schicluster-rs"
-version = "0.1.1"
+version = "0.2.0.dev0"
 description = "Rust port of scHiCluster's impute_chromosome inner pipeline — drop-in replacement for the published Python implementation. Bit-equivalent numerical behaviour, up to ~10× faster on long Hi-C chromosomes."
 readme = "README.md"
 license = {text = "MIT"}
@@ -28,6 +28,10 @@ dependencies = [
 dev = [
     "pytest>=7",
     "schicluster>=1.3",  # for parity tests
+    "pyyaml>=6",         # for tests/parity_harness.py manifest loader
+    "cooler>=0.9",       # for fixture / driver scripts
+    "h5py>=3",           # cooler dep but pinned explicitly
+    "maturin>=1.4,<2",   # for `maturin develop --release`
 ]
 
 [tool.maturin]
