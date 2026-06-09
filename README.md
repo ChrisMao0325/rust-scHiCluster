@@ -48,45 +48,15 @@ impute_chromosome(scool_url=..., chrom='chr1', resolution=25_000,
                   pad=1, std=1.0, output_dist=10_050_000)
 ```
 
-**Direct — impute path**:
+**Direct API** — call individual Rust kernels by name. Per-module usage
+guides live in [`tutorial/`](tutorial/README.md):
 
-```python
-from schicluster_rs import random_walk_cpu, impute_chromosome
+- [tutorial/impute.md](tutorial/impute.md)
+- [tutorial/loop.md](tutorial/loop.md)
+- [tutorial/domain.md](tutorial/domain.md)
+- [tutorial/compartment.md](tutorial/compartment.md)
+- [tutorial/embedding.md](tutorial/embedding.md)
 
-# Just the iterative RWR step (CSR → CSR):
-Q = random_walk_cpu(P, rp=0.5, tol=0.01)
-
-# Full inner pipeline (writes HDF5 like upstream):
-impute_chromosome(scool_url='cell.cool', chrom='chr1',
-                  resolution=25_000, output_path='chr1.hdf',
-                  rp=0.5, tol=0.01, pad=1, std=1.0,
-                  output_dist=10_050_000)
-```
-
-**Direct — loop path** :
-
-```python
-import schicluster_rs
-
-# Per-cell background normalisation (writes <prefix>.E.npz + .T.npz):
-schicluster_rs.loop_bkg_chrom(
-    cell_url='cell.cool', chrom='chr1', resolution=10_000,
-    output_prefix='cell.chr1',
-    dist=10_050_000, cap=5, pad=5, gap=2, min_cutoff=1e-6,
-)
-
-# Cell-to-group sparse accumulation (reads *.E.npz in output_dir,
-# writes <prefix>.E.hdf + <prefix>.E2.hdf):
-schicluster_rs.merge_cells_for_single_chromosome(
-    output_dir='per_cell/', output_prefix='group.chr1', merge_type='E',
-)
-
-# Loop background convolutions at given pixels (returns 4 arrays):
-bl, donut, h, v = schicluster_rs.loop_background(E, pad=5, gap=2, loop=(xs, ys))
-
-# Graph + heap peak merging:
-summit_df = schicluster_rs.find_summit(loop_df, res=10_000, dist_thres=2)
-```
 ### Snakemake (loop calling)
 
 A Rust-backed snakemake template ships at
