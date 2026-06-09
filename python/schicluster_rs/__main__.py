@@ -1,35 +1,18 @@
 """schicluster-rs CLI — Rust-backed thin wrapper around upstream hicluster.
 
 Pre-applies ``patch_schicluster()`` so every monkey-patched function
-(impute_chromosome, the four loop kernels) runs on the Rust side, then
+(impute_chromosome, the four loop kernels, insulation + TopDom,
+compartment, embedding cell-by-feature) runs on the Rust side, then
 hands argv off to the upstream argparse from ``schicluster.__main__``.
 
 Swap ``hicluster`` -> ``schicluster-rs`` in your scripts to get the Rust
-backend with no other changes. Example, replacing the calls from
-``ProstateCancer/example_notebook/imputation.md``::
-
-    schicluster-rs filter-contact \\
-        --output_dir rmbkl/ \\
-        --blacklist_1d_path mm10-blacklist.v2.bed.gz \\
-        --chr1 1 --pos1 2 --chr2 3 --pos2 4 \\
-        --contact_table contact_table.tsv \\
-        --chrom_size_path chrom_sizes.txt
-
-    schicluster-rs prepare-impute \\
-        --cell_table contact_table_rmbkl.tsv \\
-        --batch_size 1536 --pad 1 --cpu_per_job 96 \\
-        --chr1 1 --pos1 2 --chr2 3 --pos2 4 \\
-        --output_dir impute/100K/ \\
-        --chrom_size_path chrom_sizes.txt \\
-        --output_dist 500000000 --window_size 500000000 --step_size 500000000 \\
-        --resolution 100000
+backend with no other changes.
 
 Subcommands currently exposed:
 
 * ``filter-contact``  - blacklist filtering of single-cell contact pairs.
-  Pure pandas / pybedtools I/O; no per-call Rust speedup, but the patch
-  is still applied so any downstream import inside the same process
-  benefits.
+  Pure pandas / pybedtools I/O; no per-call Rust speedup, but a single
+  binary covers the full pipeline.
 * ``prepare-impute``  (alias ``imputation``) - generates the snakemake
   workflow that fans out impute_chromosome calls per chunk. The
   generated Snakefiles still call ``hic-internal impute-chromosome`` via
@@ -37,6 +20,21 @@ Subcommands currently exposed:
   installed and either source a sitecustomize that calls
   ``patch_schicluster()`` or run rules under ``schicluster-rs
   <subcmd>`` to get the per-chrom kernel routed through Rust.
+* ``domain``         - per-cell insulation score + native TopDom
+  (drops the rpy2 / R round-trip). patch_schicluster() rebinds both
+  the insulation kernel and the TopDom closure inside upstream's
+  call_domain_and_insulation orchestrator.
+* ``compartment``    - per-chrom CpG-weighted compartment score +
+  decay-normalised A/B/AB strength. Rebind happens at module level so
+  the per-cell ProcessPoolExecutor inside multiple_cell_compartment
+  transparently uses Rust.
+* ``embedding``      - cell-by-feature upper-tri extraction with
+  distance filter + scalar scaling, before SVD. SVD itself stays
+  sklearn (kept intentionally — the Phase-4 parity gate targets the
+  pre-SVD matrix; see docs/PERFORMANCE.md).
+* ``cpg-ratio``      - bedtools-nuc + pandas; no Rust speedup, just
+  the upstream prerequisite step for ``compartment``, included so a
+  single binary covers the full compartment workflow.
 
 For any other upstream subcommand, fall back to ``hicluster <subcmd>``
 directly; this CLI is intentionally narrow.
@@ -52,7 +50,11 @@ import textwrap
 _SUPPORTED = {
     "filter-contact",
     "prepare-impute",
-    "imputation",  # upstream alias for prepare-impute
+    "imputation",   # upstream alias for prepare-impute
+    "domain",       # insulation + native TopDom (Phase 2)
+    "compartment",  # CpG-weighted comp + decay-normalised strength (Phase 3)
+    "embedding",    # cell-by-feature extraction; SVD stays sklearn (Phase 4)
+    "cpg-ratio",    # bedtools-nuc + pandas; no Rust speedup, included for completeness
 }
 _HELP_FLAGS = {"-h", "--help", "-v", "--version"}
 
@@ -69,6 +71,10 @@ def main() -> int:
             Supported subcommands:
                 filter-contact      Blacklist-filter single-cell contacts.
                 prepare-impute      Write snakemake jobs for imputation.
+                domain              Per-cell insulation + native TopDom.
+                compartment         CpG-weighted compartment score + A/B strength.
+                embedding           Cell-by-feature extraction (pre-SVD).
+                cpg-ratio           bedtools-nuc CpG ratio for compartment.
 
             For per-subcommand options, run:
                 schicluster-rs <subcommand> --help
