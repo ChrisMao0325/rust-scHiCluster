@@ -135,3 +135,5 @@ data/fixtures/candidate_output.json
 data/fixtures/loop_small.npz
 data/fixtures/loop_small.cool
 data/fixtures/domain_small.npz
+data/fixtures/compartment_small.npz
+data/fixtures/embedding_small.npz

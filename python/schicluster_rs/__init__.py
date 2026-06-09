@@ -32,6 +32,8 @@ try:
         py_find_summit_chrom as _find_summit_chrom,
         py_insulation_score_chrom as _insulation_score_chrom,
         py_topdom_chrom as _topdom_chrom,
+        py_compartment_chrom as _compartment_chrom,
+        py_make_chrom_features as _make_chrom_features,
         set_num_threads as _set_num_threads,
     )
     _RUST_AVAILABLE = True
@@ -218,6 +220,12 @@ from schicluster_rs.domain import (
     run_top_dom as _run_top_dom,
 )
 
+from schicluster_rs.compartment import single_chrom_compartment as _single_chrom_compartment
+from schicluster_rs.embedding import make_chrom_matrix as _make_chrom_matrix
+
+single_chrom_compartment = _single_chrom_compartment
+make_chrom_matrix = _make_chrom_matrix
+
 
 class _DomainRStub:
     """Stand-in for the rpy2 `r` global used by
@@ -276,6 +284,12 @@ def patch_schicluster() -> bool:
         # rpy2 `r` global so the closure that's built from it uses our
         # Rust kernel.
         _domain_mod.r = _DomainRStub()
+        # ---- compartment module ----
+        from schicluster.compartment import call_compartment as _comp_mod
+        _comp_mod.single_chrom_compartment = single_chrom_compartment
+        # ---- embedding module ----
+        from schicluster.embedding import calc_embedding as _emb_mod
+        _emb_mod.make_chrom_matrix = make_chrom_matrix
         return True
     except ImportError:
         return False
@@ -287,4 +301,5 @@ __all__ = [
     "loop_bkg_chrom", "merge_cells_for_single_chromosome",
     "loop_background", "find_summit",
     "insulation_score_chrom",
+    "single_chrom_compartment", "make_chrom_matrix",
 ]

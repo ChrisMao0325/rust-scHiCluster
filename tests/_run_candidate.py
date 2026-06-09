@@ -42,6 +42,9 @@ DOMAIN_WINDOW_SIZE = 5
 DOMAIN_BIN_RESOLUTION = 10_000
 DOMAIN_CHROM = "chr1"
 
+COMPARTMENT_FIXTURE = REPO_ROOT / "data" / "fixtures" / "compartment_small.npz"
+EMBEDDING_FIXTURE = REPO_ROOT / "data" / "fixtures" / "embedding_small.npz"
+
 
 def _load_npz(path: pathlib.Path) -> dict:
     with np.load(path) as z:
@@ -144,6 +147,27 @@ def cand_insulation_score(domain_pack: dict) -> list:
     return np.asarray(score, dtype=np.float32).tolist()
 
 
+def cand_compartment(comp_pack: dict):
+    m = np.ascontiguousarray(comp_pack["compartment.matrix"], dtype=np.float32)
+    cpg = np.ascontiguousarray(comp_pack["compartment.cpg_ratio"], dtype=np.float32)
+    comp, strength = schicluster_rs.single_chrom_compartment(m, cpg, calc_strength=True)
+    return (
+        np.asarray(comp, dtype=np.float64).tolist(),
+        np.asarray(strength, dtype=np.float64).tolist(),
+    )
+
+
+def cand_embedding_features(emb_pack: dict) -> list:
+    from schicluster_rs._rust import py_make_chrom_features
+    cells = np.ascontiguousarray(emb_pack["embedding.cells"], dtype=np.float32)
+    dist = int(emb_pack["embedding.dist"])
+    resolution = int(emb_pack["embedding.resolution"])
+    dist_bins_plus_1 = dist // resolution + 1
+    scale = float(emb_pack["embedding.scale_factor"])
+    out = py_make_chrom_features(cells, dist_bins_plus_1, scale)
+    return np.asarray(out, dtype=np.float32).tolist()
+
+
 def cand_topdom_bed(domain_pack: dict) -> list:
     from schicluster_rs.domain import _topdom_chrom_to_df
     m = np.ascontiguousarray(domain_pack["topdom.matrix"], dtype=np.float32)
@@ -177,6 +201,13 @@ def main() -> None:
         domain_pack = _load_npz(DOMAIN_FIXTURE)
         payload["insulation"] = {"score": cand_insulation_score(domain_pack)}
         payload["topdom"] = {"bed": cand_topdom_bed(domain_pack)}
+
+        comp_pack = _load_npz(COMPARTMENT_FIXTURE)
+        comp_vals, strength_vals = cand_compartment(comp_pack)
+        payload["compartment"] = {"comp": comp_vals, "strength": strength_vals}
+
+        emb_pack = _load_npz(EMBEDDING_FIXTURE)
+        payload["embedding"] = {"cell_by_feature": cand_embedding_features(emb_pack)}
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
 

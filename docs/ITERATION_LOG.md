@@ -103,3 +103,38 @@ notes: |
   layer; Rust topdom kernel was correct on the first build.
 
 ---
+
+iteration: 3
+title: Phase 3+4 — compartment + embedding ported, gate fully green (17/17)
+admissibility: E
+action: |
+  Final per-chrom Rust ports:
+    - single_chrom_compartment + compartment_strength (compartment.rs)
+      f64 accumulators throughout; matches upstream's row-major
+      normalize-by-col-sum, decay-normalized A/B partition sums.
+    - make_chrom_matrix's extraction kernel (embedding.rs)
+      Pure f32 read + scalar multiply, no reduction — meets the
+      deterministic-strict gate (atol=0, exact f32 bit-equality).
+  SVD intentionally stays sklearn per design spec §6 — embedding's
+  Phase-4 manifest output is the cell-by-feature matrix *before* SVD.
+status: accepted
+fixture: data/fixtures/{compartment_small,embedding_small}.npz
+parity:
+  compartment.comp:          { class: deterministic-bounded, threshold: 1.0e-6, pass: true, metric: 0.0 }
+  compartment.strength:      { class: deterministic-bounded, threshold: 1.0e-6, pass: true, metric: 0.0 }
+  embedding.cell_by_feature: { class: deterministic-strict,  threshold: 0.0,    pass: true, metric: 0.0 }
+notes: |
+  Final 3-of-17 outputs turn green; manifest gate is now fully green
+  (17 passed, 0 skipped). patch_schicluster() rebinds
+  single_chrom_compartment + make_chrom_matrix at module level so
+  upstream's multiprocess orchestrators transparently use Rust.
+
+  One harness bug surfaced during gate iteration: rebuildpy's is_pass()
+  for deterministic-strict uses strict-`<` against the threshold, which
+  makes `threshold: 0.0` (exact f32 bit-equality, the right gate for
+  embedding's pure-index op) mathematically unreachable. Fixed locally
+  in tests/parity_harness.py with a deterministic-strict + threshold==0
+  special case that uses `<= 0.0` — the minimal correct interpretation
+  of "exact bit-equality". Manifest values unchanged.
+
+---

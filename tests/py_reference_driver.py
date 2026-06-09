@@ -30,6 +30,10 @@ from schicluster.loop.loop_calling import find_summit as upstream_find_summit
 from schicluster.domain.call_domain import (
     single_chrom_calculate_insulation_score as upstream_insulation,
 )
+from schicluster.compartment.call_compartment import (
+    single_chrom_compartment as upstream_compartment,
+)
+from schicluster.embedding.calc_embedding import make_idx as upstream_make_idx
 from rpy2.robjects import r as _rpy2_r, pandas2ri as _rpy2_pandas2ri, numpy2ri as _rpy2_numpy2ri
 import schicluster as _schicluster
 import pathlib as _pathlib_for_topdom
@@ -60,6 +64,9 @@ DOMAIN_FIXTURE = REPO_ROOT / "data" / "fixtures" / "domain_small.npz"
 DOMAIN_WINDOW_SIZE = 5
 DOMAIN_BIN_RESOLUTION = 10_000
 DOMAIN_CHROM = "chr1"
+
+COMPARTMENT_FIXTURE = REPO_ROOT / "data" / "fixtures" / "compartment_small.npz"
+EMBEDDING_FIXTURE = REPO_ROOT / "data" / "fixtures" / "embedding_small.npz"
 
 
 def _load_npz(path):
@@ -171,6 +178,33 @@ def ref_insulation_score(domain_pack):
     return np.asarray(score, dtype=np.float32).tolist()
 
 
+def ref_compartment(comp_pack):
+    from scipy.sparse import csr_matrix
+    import pandas as pd
+    m = csr_matrix(comp_pack["compartment.matrix"].astype(np.float32))
+    cpg_series = pd.Series(comp_pack["compartment.cpg_ratio"].astype(np.float32))
+    comp, strength = upstream_compartment(m, cpg_series, calc_strength=True)
+    return (
+        np.asarray(comp, dtype=np.float64).tolist(),
+        np.asarray(strength, dtype=np.float64).tolist(),
+    )
+
+
+def ref_embedding_features(emb_pack):
+    cells = emb_pack["embedding.cells"]
+    n_cells = cells.shape[0]
+    n_bins = int(emb_pack["embedding.n_bins"])
+    dist = int(emb_pack["embedding.dist"])
+    resolution = int(emb_pack["embedding.resolution"])
+    scale = float(emb_pack["embedding.scale_factor"])
+    idx = upstream_make_idx(n_bins, dist, resolution)
+    out = np.zeros((n_cells, idx[0].size), dtype=np.float32)
+    for i in range(n_cells):
+        out[i, :] = cells[i][idx].ravel()
+    out *= scale
+    return out.tolist()
+
+
 def ref_topdom_bed(domain_pack):
     from scipy.sparse import csc_matrix
     m = domain_pack["topdom.matrix"]
@@ -216,6 +250,13 @@ def main():
         domain_pack = _load_npz(DOMAIN_FIXTURE)
         payload["insulation"] = {"score": ref_insulation_score(domain_pack)}
         payload["topdom"] = {"bed": ref_topdom_bed(domain_pack)}
+
+        comp_pack = _load_npz(COMPARTMENT_FIXTURE)
+        comp_vals, strength_vals = ref_compartment(comp_pack)
+        payload["compartment"] = {"comp": comp_vals, "strength": strength_vals}
+
+        emb_pack = _load_npz(EMBEDDING_FIXTURE)
+        payload["embedding"] = {"cell_by_feature": ref_embedding_features(emb_pack)}
     finally:
         shutil.rmtree(str(bkg_dir), ignore_errors=True)
         shutil.rmtree(str(merge_dir), ignore_errors=True)

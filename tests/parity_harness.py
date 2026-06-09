@@ -204,7 +204,13 @@ def evaluate(output: OutputSpec, reference_blob: dict, candidate_blob: dict) -> 
         algorithm_class=output.algorithm_class,
         **extra_kwargs,
     )
-    ok = is_pass(metric_value, output.algorithm_class, output.threshold)
+    # Special case: deterministic-strict with threshold=0.0 means exact
+    # bit-equality (max abs error must be == 0.0).  is_pass uses strict
+    # less-than (<), so 0.0 < 0.0 = False — handle with <= here.
+    if output.algorithm_class == "deterministic-strict" and output.threshold == 0.0:
+        ok = float(metric_value) <= 0.0
+    else:
+        ok = is_pass(metric_value, output.algorithm_class, output.threshold)
     return {
         "status": "pass" if ok else "fail",
         "metric": metric_value,

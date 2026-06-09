@@ -29,6 +29,8 @@ mod merge;
 mod scan_kernels;
 mod insulation;
 mod topdom;
+mod compartment;
+mod embedding;
 
 use utils::{
     band_idx, band_w, csr_to_banded, csr_to_dense, mirror_index, triplets_to_csr, Csr,
@@ -742,5 +744,7 @@ fn _rust(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(find_summit::py_find_summit_chrom, m)?)?;
     m.add_function(wrap_pyfunction!(insulation::py_insulation_score_chrom, m)?)?;
     m.add_function(wrap_pyfunction!(topdom::py_topdom_chrom, m)?)?;
+    m.add_function(wrap_pyfunction!(compartment::py_compartment_chrom, m)?)?;
+    m.add_function(wrap_pyfunction!(embedding::py_make_chrom_features, m)?)?;
     Ok(())
 }

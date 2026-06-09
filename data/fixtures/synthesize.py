@@ -199,6 +199,59 @@ def domain_small_fixture(seed: int = 46) -> dict:
     }
 
 
+# ---- Phase 3 fixture parameters ----
+COMPARTMENT_N_BINS = 100
+
+
+def compartment_small_fixture(seed: int = 47) -> dict:
+    """100×100 symmetric Hi-C matrix + CpG-ratio vector for compartment calling.
+
+    A handful of zeroed CpG bins exercises the `bin_filter = cpg_ratio > 0`
+    branch in compartment_strength; the remaining bins span the
+    20th/80th percentile A/B partition.
+    """
+    rng = np.random.default_rng(seed)
+    n = COMPARTMENT_N_BINS
+    m = rng.exponential(1.0, (n, n)).astype(np.float64)
+    m = (m + m.T) / 2.0
+    np.fill_diagonal(m, 0.0)
+    cpg = rng.uniform(0.0, 0.1, n).astype(np.float32)
+    cpg[::10] = 0.0  # 10 bins zeroed for the bin_filter branch
+    return {
+        "compartment.matrix": m.astype(np.float32),
+        "compartment.cpg_ratio": cpg,
+    }
+
+
+# ---- Phase 4 fixture parameters ----
+EMBEDDING_N_CELLS = 5
+EMBEDDING_N_BINS = 50
+EMBEDDING_DIST = 200_000
+EMBEDDING_RESOLUTION = 10_000
+EMBEDDING_SCALE_FACTOR = 100_000
+
+
+def embedding_small_fixture(seed: int = 48) -> dict:
+    """5 cells × 50×50 dense Hi-C matrices for embedding cell-by-feature extraction.
+
+    Bypasses cooler I/O — the upstream's `make_chrom_matrix` reads .cool files
+    per cell; our driver code calls the same logic but with the cells already
+    in memory so the parity gate exercises only the Rust kernel.
+    """
+    rng = np.random.default_rng(seed)
+    cells = np.stack([
+        rng.exponential(1.0, (EMBEDDING_N_BINS, EMBEDDING_N_BINS)).astype(np.float32)
+        for _ in range(EMBEDDING_N_CELLS)
+    ])
+    return {
+        "embedding.cells": cells,
+        "embedding.n_bins": np.asarray(EMBEDDING_N_BINS, dtype=np.int32),
+        "embedding.dist": np.asarray(EMBEDDING_DIST, dtype=np.int32),
+        "embedding.resolution": np.asarray(EMBEDDING_RESOLUTION, dtype=np.int32),
+        "embedding.scale_factor": np.asarray(EMBEDDING_SCALE_FACTOR, dtype=np.int32),
+    }
+
+
 def main() -> None:
     FIXTURE_DIR.mkdir(parents=True, exist_ok=True)
     # ---- conv_small (Phase 0) ----
@@ -221,6 +274,18 @@ def main() -> None:
     print(f"  matrix.shape    = {domain_pack['topdom.matrix'].shape}, "
           f"dtype = {domain_pack['topdom.matrix'].dtype}")
     print(f"  window_size     = {int(domain_pack['topdom.window_size'])}")
+    # ---- compartment_small (Phase 3) ----
+    comp_pack = compartment_small_fixture()
+    np.savez(FIXTURE_DIR / "compartment_small.npz", **comp_pack)
+    print(f"wrote {FIXTURE_DIR / 'compartment_small.npz'} ({len(comp_pack)} keys)")
+    print(f"  matrix.shape    = {comp_pack['compartment.matrix'].shape}")
+    print(f"  cpg.nnz         = {int((comp_pack['compartment.cpg_ratio'] > 0).sum())}")
+    # ---- embedding_small (Phase 4) ----
+    emb_pack = embedding_small_fixture()
+    np.savez(FIXTURE_DIR / "embedding_small.npz", **emb_pack)
+    print(f"wrote {FIXTURE_DIR / 'embedding_small.npz'} ({len(emb_pack)} keys)")
+    print(f"  cells.shape     = {emb_pack['embedding.cells'].shape}")
+    print(f"  dist_bins       = {int(emb_pack['embedding.dist']) // int(emb_pack['embedding.resolution'])}")
 
 
 if __name__ == "__main__":
