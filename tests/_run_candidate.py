@@ -37,6 +37,11 @@ LOOP_DIST_THRES_BP = 30_000
 LOOP_SUMMIT_DIST_BINS = LOOP_DIST_THRES_BP // LOOP_RESOLUTION
 LOOP_CHROM = "chr1"
 
+DOMAIN_FIXTURE = REPO_ROOT / "data" / "fixtures" / "domain_small.npz"
+DOMAIN_WINDOW_SIZE = 5
+DOMAIN_BIN_RESOLUTION = 10_000
+DOMAIN_CHROM = "chr1"
+
 
 def _load_npz(path: pathlib.Path) -> dict:
     with np.load(path) as z:
@@ -132,6 +137,27 @@ def cand_find_summit(loop_pack: dict) -> dict:
     return {"idx": selected.tolist(), "sizes": sizes.tolist()}
 
 
+def cand_insulation_score(domain_pack: dict) -> list:
+    m = np.ascontiguousarray(domain_pack["topdom.matrix"], dtype=np.float32)
+    w = int(domain_pack["insulation.window_size"])
+    score = schicluster_rs.insulation_score_chrom(m, window_size=w, save_count=False)
+    return np.asarray(score, dtype=np.float32).tolist()
+
+
+def cand_topdom_bed(domain_pack: dict) -> list:
+    from schicluster_rs.domain import _topdom_chrom_to_df
+    m = np.ascontiguousarray(domain_pack["topdom.matrix"], dtype=np.float32)
+    w = int(domain_pack["topdom.window_size"])
+    n = m.shape[0]
+    bins = pd.DataFrame({
+        "chr": [DOMAIN_CHROM] * n,
+        "from.coord": [i * DOMAIN_BIN_RESOLUTION for i in range(n)],
+        "to.coord": [(i + 1) * DOMAIN_BIN_RESOLUTION for i in range(n)],
+    })
+    df = _topdom_chrom_to_df(m, bins, w, stat_filter=True)
+    return df.to_dict(orient="records")
+
+
 def main() -> None:
     conv = _load_npz(CONV_FIXTURE)
     loop_pack = _load_npz(LOOP_FIXTURE)
@@ -147,6 +173,10 @@ def main() -> None:
 
         payload["scan_kernels"] = cand_scan_kernels(loop_pack)
         payload["find_summit"] = cand_find_summit(loop_pack)
+
+        domain_pack = _load_npz(DOMAIN_FIXTURE)
+        payload["insulation"] = {"score": cand_insulation_score(domain_pack)}
+        payload["topdom"] = {"bed": cand_topdom_bed(domain_pack)}
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
 

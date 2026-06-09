@@ -167,6 +167,38 @@ def loop_small_packed_fixture():
     return {**bkg, **merge, **scan_summit}
 
 
+# ---- Phase 2 fixture parameters ----
+DOMAIN_N_BINS = 80
+DOMAIN_BLOCK_SIZE = 20
+DOMAIN_WINDOW_SIZE = 5      # insulation + topdom window
+
+
+def domain_small_fixture(seed: int = 46) -> dict:
+    """Synthetic dense Hi-C matrix with 4 planted 20-bin blocks at n=80.
+
+    Both TopDom and insulation_score consume the same matrix. Block-diagonal
+    structure gives TopDom enough signal to find domain boundaries; the small
+    n keeps the test fast.
+    """
+    rng = np.random.default_rng(seed)
+    n = DOMAIN_N_BINS
+    block_size = DOMAIN_BLOCK_SIZE
+    # base contact distribution
+    matrix = rng.exponential(1.0, size=(n, n)).astype(np.float64)
+    # amplify intra-block contacts so domains stick out
+    for b in range(0, n, block_size):
+        end = min(b + block_size, n)
+        matrix[b:end, b:end] *= 3.0
+    # symmetrise + zero diagonal (TopDom assumes symmetric, dense, diagonal-free)
+    matrix = (matrix + matrix.T) / 2.0
+    np.fill_diagonal(matrix, 0.0)
+    return {
+        "topdom.matrix": matrix.astype(np.float32),
+        "topdom.window_size": np.asarray(DOMAIN_WINDOW_SIZE, dtype=np.int32),
+        "insulation.window_size": np.asarray(DOMAIN_WINDOW_SIZE, dtype=np.int32),
+    }
+
+
 def main() -> None:
     FIXTURE_DIR.mkdir(parents=True, exist_ok=True)
     # ---- conv_small (Phase 0) ----
@@ -182,6 +214,13 @@ def main() -> None:
     print(f"wrote {FIXTURE_DIR / 'loop_small.npz'} ({len(loop_pack)} keys)")
     print(f"  n_cells  = {LOOP_N_CELLS}, n_bins = {LOOP_N_BINS}")
     print(f"  scan loop pixels = {loop_pack['scan.loop_xs'].size}")
+    # ---- domain_small (Phase 2) ----
+    domain_pack = domain_small_fixture()
+    np.savez(FIXTURE_DIR / "domain_small.npz", **domain_pack)
+    print(f"wrote {FIXTURE_DIR / 'domain_small.npz'} ({len(domain_pack)} keys)")
+    print(f"  matrix.shape    = {domain_pack['topdom.matrix'].shape}, "
+          f"dtype = {domain_pack['topdom.matrix'].dtype}")
+    print(f"  window_size     = {int(domain_pack['topdom.window_size'])}")
 
 
 if __name__ == "__main__":

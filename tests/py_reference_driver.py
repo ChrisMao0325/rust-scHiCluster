@@ -27,6 +27,15 @@ from schicluster.loop.merge_cell_to_group import (
 )
 from schicluster.loop.loop_calling import loop_background as upstream_loop_background
 from schicluster.loop.loop_calling import find_summit as upstream_find_summit
+from schicluster.domain.call_domain import (
+    single_chrom_calculate_insulation_score as upstream_insulation,
+)
+from rpy2.robjects import r as _rpy2_r, pandas2ri as _rpy2_pandas2ri, numpy2ri as _rpy2_numpy2ri
+import schicluster as _schicluster
+import pathlib as _pathlib_for_topdom
+_rpy2_pandas2ri.activate()
+_rpy2_numpy2ri.activate()
+_rpy2_r.source(str(_pathlib_for_topdom.Path(_schicluster.__path__[0]) / 'domain/TopDom.R'))
 
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -46,6 +55,11 @@ LOOP_MIN_CUTOFF = 1e-6
 LOOP_DIST_THRES_BP = 30_000
 LOOP_SUMMIT_DIST_BINS = LOOP_DIST_THRES_BP // LOOP_RESOLUTION
 LOOP_CHROM = "chr1"
+
+DOMAIN_FIXTURE = REPO_ROOT / "data" / "fixtures" / "domain_small.npz"
+DOMAIN_WINDOW_SIZE = 5
+DOMAIN_BIN_RESOLUTION = 10_000
+DOMAIN_CHROM = "chr1"
 
 
 def _load_npz(path):
@@ -148,6 +162,36 @@ def ref_find_summit(loop_pack):
     return {"idx": selected.tolist(), "sizes": sizes.tolist()}
 
 
+def ref_insulation_score(domain_pack):
+    from scipy.sparse import csc_matrix
+    m = domain_pack["topdom.matrix"]
+    csc = csc_matrix(m.astype(np.float32))
+    w = int(domain_pack["insulation.window_size"])
+    score = upstream_insulation(csc, window_size=w, save_count=False)
+    return np.asarray(score, dtype=np.float32).tolist()
+
+
+def ref_topdom_bed(domain_pack):
+    from scipy.sparse import csc_matrix
+    m = domain_pack["topdom.matrix"]
+    w = int(domain_pack["topdom.window_size"])
+    n = m.shape[0]
+    csc = csc_matrix(m.astype(np.float32))
+    bins = pd.DataFrame({
+        "chr": [DOMAIN_CHROM] * n,
+        "from.coord": [i * DOMAIN_BIN_RESOLUTION for i in range(n)],
+        "to.coord": [(i + 1) * DOMAIN_BIN_RESOLUTION for i in range(n)],
+    })
+    result = _rpy2_r.RunTopDom(csc.indices + 1, csc.indptr, csc.data, bins, w)
+    df = pd.DataFrame(result)
+    if df.shape[0] == 0 or df.shape[1] == 0:
+        return []
+    if df.shape[1] != 4 and df.shape[0] == 4:
+        df = df.T
+    df.columns = ["chrom", "chromStart", "chromEnd", "name"]
+    return df.to_dict(orient="records")
+
+
 def main():
     conv_pack = _load_npz(CONV_FIXTURE)
     loop_pack = _load_npz(LOOP_FIXTURE)
@@ -168,6 +212,10 @@ def main():
 
         payload["scan_kernels"] = ref_scan_kernels(loop_pack)
         payload["find_summit"] = ref_find_summit(loop_pack)
+
+        domain_pack = _load_npz(DOMAIN_FIXTURE)
+        payload["insulation"] = {"score": ref_insulation_score(domain_pack)}
+        payload["topdom"] = {"bed": ref_topdom_bed(domain_pack)}
     finally:
         shutil.rmtree(str(bkg_dir), ignore_errors=True)
         shutil.rmtree(str(merge_dir), ignore_errors=True)

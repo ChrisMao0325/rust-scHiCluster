@@ -30,6 +30,8 @@ try:
         py_merge_cells_sum as _merge_cells_sum,
         py_scan_kernels_chrom as _scan_kernels_chrom,
         py_find_summit_chrom as _find_summit_chrom,
+        py_insulation_score_chrom as _insulation_score_chrom,
+        py_topdom_chrom as _topdom_chrom,
         set_num_threads as _set_num_threads,
     )
     _RUST_AVAILABLE = True
@@ -211,6 +213,29 @@ from schicluster_rs.loop import (
 loop_background = _loop_background
 find_summit = _find_summit
 
+from schicluster_rs.domain import (
+    insulation_score_chrom,
+    run_top_dom as _run_top_dom,
+)
+
+
+class _DomainRStub:
+    """Stand-in for the rpy2 `r` global used by
+    ``schicluster.domain.call_domain.call_domain_and_insulation``.
+
+    Upstream does ``r.source('TopDom.R')`` then references ``r.RunTopDom(j, p,
+    x, bins, window_size)`` to compute domains. We swap that to call the
+    Rust kernel directly so the upstream orchestrator (boundary aggregation,
+    insulation concatenation, .npz / .h5ad / .nc writers) keeps working.
+    """
+    @staticmethod
+    def source(_path):
+        return None
+
+    @staticmethod
+    def RunTopDom(j, p, x, bins, window_size):
+        return _run_top_dom(j, p, x, bins, window_size)
+
 
 def patch_schicluster() -> bool:
     """Monkey-patch ``schicluster.impute.impute_chromosome.random_walk_cpu``
@@ -242,6 +267,15 @@ def patch_schicluster() -> bool:
         _merge_mod.merge_cells_for_single_chromosome = merge_cells_for_single_chromosome
         _loop_calling_mod.loop_background = _loop_background
         _loop_calling_mod.find_summit = _find_summit
+        # ---- domain module ----
+        from schicluster.domain import call_domain as _domain_mod
+        _domain_mod.single_chrom_calculate_insulation_score = insulation_score_chrom
+        # call_domain_and_insulation builds a local `run_top_dom` closure
+        # inside its body via `def run_top_dom(matrix, bins): ...`, so we
+        # cannot rebind it at module level. Instead, monkey-patch the
+        # rpy2 `r` global so the closure that's built from it uses our
+        # Rust kernel.
+        _domain_mod.r = _DomainRStub()
         return True
     except ImportError:
         return False
@@ -252,4 +286,5 @@ __all__ = [
     "set_num_threads", "convolve2d_mirror",
     "loop_bkg_chrom", "merge_cells_for_single_chromosome",
     "loop_background", "find_summit",
+    "insulation_score_chrom",
 ]

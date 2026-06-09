@@ -27,6 +27,8 @@ mod find_summit;
 mod loop_bkg;
 mod merge;
 mod scan_kernels;
+mod insulation;
+mod topdom;
 
 use utils::{
     band_idx, band_w, csr_to_banded, csr_to_dense, mirror_index, triplets_to_csr, Csr,
@@ -738,5 +740,7 @@ fn _rust(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(merge::py_merge_cells_sum, m)?)?;
     m.add_function(wrap_pyfunction!(scan_kernels::py_scan_kernels_chrom, m)?)?;
     m.add_function(wrap_pyfunction!(find_summit::py_find_summit_chrom, m)?)?;
+    m.add_function(wrap_pyfunction!(insulation::py_insulation_score_chrom, m)?)?;
+    m.add_function(wrap_pyfunction!(topdom::py_topdom_chrom, m)?)?;
     Ok(())
 }

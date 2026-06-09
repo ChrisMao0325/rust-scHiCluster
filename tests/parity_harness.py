@@ -124,6 +124,55 @@ def evaluate(output: OutputSpec, reference_blob: dict, candidate_blob: dict) -> 
         ref_arr = _pad(ref_arr)
         cand_arr = _pad(cand_arr)
 
+    # Special case: topdom.bed.interval_jaccard — set Jaccard over domain (start, end) pairs.
+    if output.name == "topdom.bed.interval_jaccard":
+        ref_bed = _dig(reference_blob, "$.topdom.bed") or []
+        cand_bed = _dig(candidate_blob, "$.topdom.bed") or []
+        ref_doms = {(r["chromStart"], r["chromEnd"]) for r in ref_bed if r["name"] == "domain"}
+        cand_doms = {(r["chromStart"], r["chromEnd"]) for r in cand_bed if r["name"] == "domain"}
+        union = ref_doms | cand_doms
+        if not union:
+            metric_value = 1.0
+        else:
+            metric_value = len(ref_doms & cand_doms) / len(union)
+        ok = metric_value >= output.threshold
+        return {
+            "status": "pass" if ok else "fail",
+            "metric": metric_value,
+            "threshold": output.threshold,
+            "message": f"{output.name}: Jaccard={metric_value:.4f} vs threshold={output.threshold!r}",
+        }
+
+    # Special case: topdom.bed.bin_label_agreement — per-bin tag agreement after
+    # expanding both BEDs onto the bin grid (1 bp granularity since the fixture is tiny).
+    if output.name == "topdom.bed.bin_label_agreement":
+        ref_bed = _dig(reference_blob, "$.topdom.bed") or []
+        cand_bed = _dig(candidate_blob, "$.topdom.bed") or []
+        if not ref_bed and not cand_bed:
+            metric_value = 1.0
+        else:
+            def _max_end(bed):
+                return max((r["chromEnd"] for r in bed), default=0)
+            grid_end = max(_max_end(ref_bed), _max_end(cand_bed))
+            ref_tags = ["gap"] * grid_end
+            cand_tags = ["gap"] * grid_end
+            for r in ref_bed:
+                for i in range(r["chromStart"], min(r["chromEnd"], grid_end)):
+                    ref_tags[i] = r["name"]
+            for r in cand_bed:
+                for i in range(r["chromStart"], min(r["chromEnd"], grid_end)):
+                    cand_tags[i] = r["name"]
+            n_total = max(grid_end, 1)
+            n_match = sum(1 for a, b in zip(ref_tags, cand_tags) if a == b)
+            metric_value = n_match / n_total
+        ok = metric_value >= output.threshold
+        return {
+            "status": "pass" if ok else "fail",
+            "metric": metric_value,
+            "threshold": output.threshold,
+            "message": f"{output.name}: agreement={metric_value:.4f} vs threshold={output.threshold!r}",
+        }
+
     # Special case: find_summit.sizes -- align via the idx intersection.
     if output.name == "find_summit.sizes":
         ref_idx = np.asarray(_dig(reference_blob, "$.find_summit.idx"))

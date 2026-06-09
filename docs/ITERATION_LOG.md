@@ -63,3 +63,43 @@ notes: |
   classification average='macro'). Final pytest: 11 passed, 6 skipped.
 
 ---
+
+iteration: 2
+title: Phase 2 — domain module ported, native TopDom drops rpy2/R
+admissibility: E
+action: |
+  Per-chrom Rust ports of:
+    - single_chrom_calculate_insulation_score (insulation.rs) — f64 sums
+      cast to f32 on emit; sliding-window submatrix block sums match
+      scipy's CSR.sum() semantics.
+    - TopDom (topdom.rs) — full native port of TopDom.R, replacing the
+      rpy2 round-trip. Includes:
+        * diamond mean signal + gap region detection (Which.Gap.Region2)
+        * Data.Norm + Change.Point + Detect.Local.Extreme
+        * Wilcoxon rank-sum p-values (normal approximation with
+          continuity + tie correction, matching R's wilcox.test(exact=F,
+          alternative="less"))
+        * Convert.Bin.To.Domain.TMP with boundary merging
+  Wilcoxon's normal CDF uses an inline Abramowitz erf (~1.5e-7 error,
+  more than enough for p < 0.05 thresholds). No new crate dependencies.
+status: accepted
+fixture: data/fixtures/domain_small.npz
+parity:
+  insulation.score:                  { class: deterministic-bounded, threshold: 1.0e-6, pass: true, metric: 5.96e-08 }
+  topdom.bed.interval_jaccard:       { class: ranked,                threshold: 0.95,  pass: true, metric: 1.0 }
+  topdom.bed.bin_label_agreement:    { class: classification,        threshold: 0.98,  pass: true, metric: 1.0 }
+notes: |
+  patch_schicluster() now monkey-patches schicluster.domain.call_domain's
+  rpy2 `r` global with a stub whose RunTopDom routes through the Rust
+  kernel — that's how the upstream `call_domain_and_insulation` keeps
+  working without edits (the rpy2 closure inside it now calls Rust).
+  insulation_score_chrom is monkey-patched at module level directly.
+
+  One bug surfaced during gate iteration: _topdom_chrom_to_df (Python
+  layer, not Rust) had an off-by-one in chromEnd — R's Convert.Bin.To.
+  Domain.TMP sets to.coord = from.coord of the next row, equivalent to
+  to_coord[to_id + 1]. The Phase 2 plan's verbatim wrapper used
+  to_coord[to_id], cutting every domain 10 kb short. Fixed at the Python
+  layer; Rust topdom kernel was correct on the first build.
+
+---
