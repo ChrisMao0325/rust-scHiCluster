@@ -16,6 +16,7 @@ numpy = "0.22"
 ndarray = { version = "0.16", features = ["rayon"] }
 sprs = "0.11"
 rayon = "1.10"
+flate2 = "1.0"
 
 [profile.release]
 opt-level = 3
