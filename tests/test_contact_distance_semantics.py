@@ -71,3 +71,20 @@ def test_missing_file_raises():
             np.ascontiguousarray(EDGES, dtype=np.float64),
             RESOLUTION, C1, P1, C2, P2,
         )
+
+
+def test_wrapper_returns_upstream_frame_shapes():
+    from schicluster_rs.contact_distance import compute_decay
+
+    chrom_sizes = pd.DataFrame(PACK["contact_distance.chrom_sizes"], index=CHROMS)
+    sparsity_df, decay_df = compute_decay(
+        cell_name="cell_A", contact_path=FIXTURE, bins=EDGES,
+        chrom_sizes=chrom_sizes, resolution=RESOLUTION,
+        chrom1=C1, pos1=P1, chrom2=C2, pos2=P2,
+    )
+    ref_hist, ref_sparsity = _upstream_reference()
+    assert list(decay_df.columns) == ["cell_A"]
+    assert list(sparsity_df.columns) == ["cell_A"]
+    assert decay_df["cell_A"].tolist() == ref_hist.tolist()
+    for chrom, count in ref_sparsity.items():
+        assert int(sparsity_df.loc[str(chrom), "cell_A"]) == int(count)
