@@ -44,6 +44,11 @@ DOMAIN_CHROM = "chr1"
 
 COMPARTMENT_FIXTURE = REPO_ROOT / "data" / "fixtures" / "compartment_small.npz"
 EMBEDDING_FIXTURE = REPO_ROOT / "data" / "fixtures" / "embedding_small.npz"
+GENE_SCORE_FIXTURE = REPO_ROOT / "data" / "fixtures" / "gene_score_small.npz"
+GENE_SCORE_COOL = REPO_ROOT / "data" / "fixtures" / "gene_score_small.cool"
+GENE_SCORE_CONTACTS = REPO_ROOT / "data" / "fixtures" / "gene_score_small.contact.tsv.gz"
+CONTACT_DISTANCE_FIXTURE = REPO_ROOT / "data" / "fixtures" / "contact_distance_small.npz"
+CONTACT_DISTANCE_TSV = REPO_ROOT / "data" / "fixtures" / "contact_distance_small.tsv.gz"
 
 
 def _load_npz(path: pathlib.Path) -> dict:
@@ -182,6 +187,63 @@ def cand_topdom_bed(domain_pack: dict) -> list:
     return df.to_dict(orient="records")
 
 
+def _gene_meta_from_pack(pack):
+    chrom = str(pack["gene_score.chrom"][0])
+    ids = [str(g) for g in pack["gene_score.gene_id"]]
+    return pd.DataFrame(
+        {0: [chrom] * len(ids),
+         1: pack["gene_score.gene_start_bin"],
+         2: pack["gene_score.gene_end_bin"]},
+        index=ids,
+    )
+
+
+def _chrom_sizes_from_pack(pack):
+    return pd.Series(
+        pack["gene_score.chrom_size"],
+        index=[str(c) for c in pack["gene_score.chrom"]],
+    )
+
+
+def cand_gene_score_impute(pack):
+    from schicluster_rs.gene_score import gene_score_impute
+    return [float(v) for v in gene_score_impute(
+        cell_path=str(GENE_SCORE_COOL),
+        chrom_sizes=_chrom_sizes_from_pack(pack),
+        gene_meta=_gene_meta_from_pack(pack),
+    )]
+
+
+def cand_gene_score_raw(pack):
+    from schicluster_rs.gene_score import gene_score_raw
+    return [int(v) for v in gene_score_raw(
+        cell_path=str(GENE_SCORE_CONTACTS),
+        chrom_sizes=_chrom_sizes_from_pack(pack),
+        gene_meta=_gene_meta_from_pack(pack),
+        resolution=int(pack["gene_score.resolution"]),
+        chrom1=0, pos1=1, chrom2=2, pos2=3,
+    )]
+
+
+def cand_contact_distance(pack):
+    from schicluster_rs.contact_distance import compute_decay
+    chroms = [str(c) for c in pack["contact_distance.chroms"]]
+    chrom_sizes = pd.DataFrame(pack["contact_distance.chrom_sizes"], index=chroms)
+    c1, p1, c2, p2 = [int(x) for x in pack["contact_distance.cols"]]
+    sparsity_df, decay_df = compute_decay(
+        cell_name="fixture_cell",
+        contact_path=str(CONTACT_DISTANCE_TSV),
+        bins=pack["contact_distance.bin_edges"],
+        chrom_sizes=chrom_sizes,
+        resolution=int(pack["contact_distance.resolution"]),
+        chrom1=c1, pos1=p1, chrom2=c2, pos2=p2,
+    )
+    decay = [int(v) for v in decay_df["fixture_cell"].values]
+    series = sparsity_df["fixture_cell"]
+    sparsity = [int(series.loc[k]) for k in sorted(str(x) for x in series.index)]
+    return decay, sparsity
+
+
 def main() -> None:
     conv = _load_npz(CONV_FIXTURE)
     loop_pack = _load_npz(LOOP_FIXTURE)
@@ -208,6 +270,16 @@ def main() -> None:
 
         emb_pack = _load_npz(EMBEDDING_FIXTURE)
         payload["embedding"] = {"cell_by_feature": cand_embedding_features(emb_pack)}
+
+        gs_pack = _load_npz(GENE_SCORE_FIXTURE)
+        payload["gene_score"] = {
+            "impute": cand_gene_score_impute(gs_pack),
+            "raw": cand_gene_score_raw(gs_pack),
+        }
+
+        cd_pack = _load_npz(CONTACT_DISTANCE_FIXTURE)
+        cd_decay, cd_sparsity = cand_contact_distance(cd_pack)
+        payload["contact_distance"] = {"decay": cd_decay, "sparsity": cd_sparsity}
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
 
