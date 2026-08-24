@@ -78,6 +78,27 @@ fn gaussian_filter_2d(a: &Array2<f32>, std: f32, truncate: i32) -> Array2<f32> {
     let kernel = gaussian_kernel_1d(std, truncate);
     let lw = (kernel.len() / 2) as i32;
     let (m, n) = (a.nrows(), a.ncols());
+    let kn = kernel.len();
+
+    // acceleration: ACCELERATION_PLAYBOOK §3.4 hoist-invariant-index-computation (E)
+    //
+    // Same defect the shared conv primitive had before Phase 6 iter 1, and this
+    // path never went through that primitive — gaussian_filter_2d is a separate
+    // separable implementation. mirror_index performs an integer modulo plus two
+    // branches, and it is a pure function of (offset, extent): it never reads
+    // the data. Recomputing it per (i, j, kx) costs m*n*kn calls per pass, twice
+    // — for a 25 kb chr1 (n = 7820, kn = 3) that is ~367M modulos.
+    //
+    // Tabulating each axis once turns them into array loads. Integer arithmetic
+    // only: the float operand sequence and its order are untouched, so this is
+    // (E)-exact and the output is bit-identical.
+    let col_map: Vec<usize> = (0..(n + kn))
+        .map(|t| mirror_index(t as i32 - lw, n as i32))
+        .collect();
+    let row_map: Vec<usize> = (0..(m + kn))
+        .map(|t| mirror_index(t as i32 - lw, m as i32))
+        .collect();
+
     // Step 1: convolve along axis 1 (rows) → tmp.
     let mut tmp = Array2::<f32>::zeros((m, n));
     let a_buf = a.as_slice().expect("a contig");
@@ -90,8 +111,7 @@ fn gaussian_filter_2d(a: &Array2<f32>, std: f32, truncate: i32) -> Array2<f32> {
             for j in 0..n {
                 let mut acc = 0.0_f32;
                 for (kx, &kv) in kernel.iter().enumerate() {
-                    let src_j = mirror_index(j as i32 + (kx as i32 - lw), n as i32);
-                    acc += kv * a_buf[row_start + src_j];
+                    acc += kv * a_buf[row_start + col_map[j + kx]];
                 }
                 out_row[j] = acc;
             }
@@ -108,8 +128,7 @@ fn gaussian_filter_2d(a: &Array2<f32>, std: f32, truncate: i32) -> Array2<f32> {
             for j in 0..n {
                 let mut acc = 0.0_f32;
                 for (kx, &kv) in kernel.iter().enumerate() {
-                    let src_i = mirror_index(i as i32 + (kx as i32 - lw), m as i32);
-                    acc += kv * tmp_buf2[src_i * n + j];
+                    acc += kv * tmp_buf2[row_map[i + kx] * n + j];
                 }
                 out_row[j] = acc;
             }
