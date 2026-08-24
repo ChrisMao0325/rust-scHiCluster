@@ -185,9 +185,12 @@ bound; it records the reasoning per candidate so the absence is auditable.
    wrong.
 7. **Contacts longer than the top histogram edge (~231.7 Mb for hg38) are
    dropped** by `contact-distance`, matching upstream.
-8. **`statsmodels` and `tables` are absent from the candidate env**, so the
-   notebooks exercise per-cell workers directly rather than the orchestrators
-   that end in `to_hdf`. The orchestrators are unmodified Python.
+8. **`statsmodels` is absent from the candidate env**, so the notebooks
+   exercise per-cell workers directly rather than the loop orchestrator that
+   ends in a BH-FDR call. The orchestrators are unmodified Python. (`tables`
+   was also absent and was installed during the Phase 6b survey, since the
+   real-data impute harness needs it to write its HDF5 output; it is already a
+   transitive requirement of any `to_hdf` path.)
 9. **Iterations 1–3 of [ITERATION_LOG.md](ITERATION_LOG.md) recorded no
    timings.** `examples/evolution.ipynb` plots those points as gaps rather than
    inventing values; the aggregate figure covers only the Phase 6 acceleration
