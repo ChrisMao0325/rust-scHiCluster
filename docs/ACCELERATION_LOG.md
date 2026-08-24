@@ -70,3 +70,49 @@ notes: |
 ```
 
 ---
+
+## iter 1 — hoist mirror-index tables out of the conv inner loop
+
+```yaml
+iter: 1
+status: ACCEPT
+action: hoist_mirror_index_tables
+playbook_section: "§3.4"
+admissibility: exact
+admissibility_evidence: |
+  mirror_index is a pure function of (offset, extent) — it never reads the
+  input data. Tabulating it per axis and indexing the table produces the
+  identical index sequence the inner loop computed before, so every float
+  multiply-add happens in the same order with the same operands. Pre-flipping
+  the kernel likewise changes only addressing, not the accumulation order. No
+  perturbation bound is needed: the output is bit-identical, confirmed by
+  conv.convolved holding its metric at exactly 1.7881393432617188e-07, the
+  same value iteration 0 of ITERATION_LOG.md recorded.
+wall_clock_mean_s: 0.0946
+wall_clock_stddev_s: 0.0009
+wall_clock_runs_s: [0.0297, 0.0317, 0.0303]
+warmup_run_s: 0.0281
+speedup_vs_previous: 1.479
+speedup_vs_baseline: 1.479
+parity_metric: 0.0
+parity_class: deterministic-bounded
+parity_threshold: 1.0e-6
+parity_passes: true
+notes: |
+  The conv workload went 0.0740 -> 0.0306 s, a 2.42x speedup on that kernel and
+  1.48x on the summed benchmark. More importantly it flips the verdict from the
+  baseline: conv2d_mirror was 0.9x against scipy.ndimage.convolve (i.e. slower)
+  and is now 2.3x faster.
+
+  Why it was slow: the inner loop called mirror_index once per (i, j, p, q).
+  For a 1024x1024 input with an 11x11 kernel that is ~127M calls, each doing an
+  integer modulo plus two branches. The column mirror depends only on (j, q)
+  and the row mirror only on (i, p), so neither belonged in the innermost loop
+  at all. Both are now tabulated once per call — (nrows + kh) and (ncols + kw)
+  entries — and the inner loop does an array load instead.
+
+  This is the acceleration target the crate actually had. The other two
+  workloads are unchanged, as expected: neither touches conv.
+```
+
+---
