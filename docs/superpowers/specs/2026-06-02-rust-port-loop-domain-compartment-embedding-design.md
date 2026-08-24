@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-02
 **Repo:** `rust-scHiCluster` (existing — extends `schicluster_rs`)
-**Protocol:** [rebuildpy](../../../../../rebuildpy/README.md) — 6-step, two-agent loop, pre-registered class-aware parity gate.
+**Protocol:** [rebuildpy](../../../../rebuildpy/README.md) — 6-step, two-agent loop, pre-registered class-aware parity gate.
 **Upstream reference:** `/large_storage/zhoulab/shengmao/scHiCluster` (editable in `schicluster` env, version `1.3.5.dev22+gd566046`).
 
 ## 1. Identity & scope

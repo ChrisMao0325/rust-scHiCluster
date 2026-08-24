@@ -1,4 +1,4 @@
-# ITERATION_LOG — Phase 3 / Phase 5 Acceleration attempts
+# ITERATION_LOG — port and acceleration attempts
 
 > One YAML block per attempt (accepted, rejected for gate, rejected for no speedup, or rejected for inadmissibility). Format follows `rebuildpy/PROTOCOL.md §3b`.
 
@@ -136,5 +136,100 @@ notes: |
   in tests/parity_harness.py with a deterministic-strict + threshold==0
   special case that uses `<= 0.0` — the minimal correct interpretation
   of "exact bit-equality". Manifest values unchanged.
+
+---
+
+iteration: 4
+title: Phase 5 — gene-score ported (per-gene CSR window sums)
+admissibility: E
+action: |
+  Rust port of the per-gene window-sum loop shared by gene_score_impute and
+  gene_score_raw (gene_score.rs). Upstream evaluates D[r0:r1, c0:c1].sum()
+  once per gene — 78,691 scipy submatrix allocations per cell on the
+  reference workload. The kernel instead binary-searches each row's sorted
+  column indices for the column range and reduces in place. Rayon
+  parallelises across genes; each gene's reduction is a fixed order.
+
+  Cooler reads (impute) and the pandas groupby matrix build (raw) stay Python.
+status: accepted
+fixture: data/fixtures/gene_score_small.{npz,cool,contact.tsv.gz}
+timing:
+  benchmark: 4000x4000 f32 CSR, 140502 nnz, 20000 gene windows
+  python_ref_s: 1.96
+  rust_cand_s: 0.04
+  speedup: 46.3x
+parity:
+  gene_score.impute: { class: deterministic-bounded, threshold: 1.0e-6, pass: true, metric: 0.0 }
+  gene_score.raw:    { class: deterministic-strict,  threshold: 0.0,    pass: true, metric: 0.0 }
+notes: |
+  One equivalence trap surfaced during gate iteration, and it is the reason
+  this kernel is not a plain accumulate loop.
+
+  scipy's csr.sum(axis=None) is NOT csr.data.sum(). It is computed as
+  (self @ np.ones(n_cols, dtype=res_dtype)).sum(): a CSR matvec against a ones
+  vector, which accumulates each row serially in stored column order, followed
+  by np.add.reduce over the dense row-sums vector, which uses pairwise
+  summation (8-way unrolled base case, 128-element blocksize). res_dtype is the
+  matrix's own dtype for floats, so an f32 cool reduces entirely in f32.
+
+  Imputed cools store count as f32, so upstream's own answer carries ~3.8e-6 of
+  f32 rounding on a window summing to ~48. Three candidate reductions were
+  measured against it:
+    - f64 accumulate (the obvious port):        3.35e-6 off  -> FAILS 1e-6 gate
+    - flat f32 pairwise over window values:     3.81e-6 off  -> FAILS 1e-6 gate
+    - f32 matvec-then-pairwise (scipy's own):   0.0          -> bit-exact
+  The manifest is read-only and the protocol forbids widening a threshold to
+  make a port pass, so the third was implemented. Verified bit-exact on every
+  fixture gene and on 2000 randomised f32 windows
+  (tests/test_gene_score_semantics.py).
+
+  The fixture also pins upstream's D[(xx-1):(yy+1), ...] quirk: when xx == 0
+  the row start is -1, which scipy resolves to n-1, so the window is empty and
+  the gene scores 0.0. resolve_bound() reproduces CPython slice semantics
+  rather than "fixing" this — porting it as [0:(yy+1)] would silently change
+  every first-bin gene's score. Note the quirk is impute-mode only: raw mode's
+  window is [xx:(yy+1), xx:(yy+1)], with no -1, so the same gene scores 6
+  there and 0.0 in impute mode.
+
+---
+
+iteration: 5
+title: Phase 5 — contact-distance ported (streaming gzip reader)
+admissibility: E
+action: |
+  Rust port of compute_decay (contact_distance.rs). Upstream builds a pandas
+  DataFrame of every contact just to use four columns; the kernel streams the
+  gzipped TSV line by line in constant memory via flate2's MultiGzDecoder,
+  histograms |pos2-pos1| over the caller-supplied log-spaced edges, and counts
+  distinct off-diagonal bin pairs per chrom in a HashSet.
+
+  First I/O dependency in the crate (flate2 1.0, pure-Rust miniz_oxide
+  backend so no system zlib and the wheel matrix stays portable). This is the
+  one deliberate move of the I/O seam, justified in the design spec §4.2: the
+  cost being removed *is* the read.
+status: accepted
+fixture: data/fixtures/contact_distance_small.tsv.gz
+timing:
+  benchmark: real production cell, ProstateCancer/rmbkl/*.tsv.gz, 45402 cis contacts
+  python_ref_s: 0.350
+  rust_cand_s: 0.091
+  speedup: 3.8x
+parity:
+  contact_distance.decay:    { class: deterministic-strict, threshold: 0.0, pass: true, metric: 0.0 }
+  contact_distance.sparsity: { class: deterministic-strict, threshold: 0.0, pass: true, metric: 0.0 }
+notes: |
+  Both outputs are integer counts, exact under any summation order, so both
+  gate strict. Bin edges are computed by numpy in Python and passed in, so
+  Rust never recomputes exp2 and there is no ULP drift.
+
+  np.histogram's edge rules are replicated exactly: bins are right-open except
+  the final bin which is right-closed, and values outside [edges[0],
+  edges[-1]] are dropped. For hg38 the top edge is ~231.7 Mb against a 249.0
+  Mb chr1, so upstream silently drops the longest cis contacts — replicated,
+  not fixed.
+
+  The measured 3.8x matches the design spec's honest 3-5x prediction: gzip
+  inflate is the floor, and flate2 does not decompress meaningfully faster
+  than zlib. The win is skipping DataFrame construction, not decompression.
 
 ---

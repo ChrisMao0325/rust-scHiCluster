@@ -153,6 +153,38 @@ outputs:
     algorithm_class: deterministic-strict
     threshold: 0.0     # exact f32 bit-equality (pure index+scale, no reduction)
 
+  # ---- Phase 5 (gene-score) ----
+  - name: gene_score.impute
+    type: "1d f64 array, one score per gene"
+    location_reference: "$.gene_score.impute"
+    location_candidate: "$.gene_score.impute"
+    metric: deterministic
+    algorithm_class: deterministic-bounded
+    threshold: 1.0e-6     # numpy's pairwise .sum() is not reproduced bit-for-bit; see spec 3.4
+  - name: gene_score.raw
+    type: "1d i64 array, one count per gene"
+    location_reference: "$.gene_score.raw"
+    location_candidate: "$.gene_score.raw"
+    metric: deterministic
+    algorithm_class: deterministic-strict
+    threshold: 0.0        # int32 counts: addition is exact and order-independent
+
+  # ---- Phase 5 (contact-distance) ----
+  - name: contact_distance.decay
+    type: "1d i64 histogram counts over log-spaced distance bins"
+    location_reference: "$.contact_distance.decay"
+    location_candidate: "$.contact_distance.decay"
+    metric: deterministic
+    algorithm_class: deterministic-strict
+    threshold: 0.0
+  - name: contact_distance.sparsity
+    type: "1d i64 distinct off-diagonal bin-pair count per chrom, chrom-name sorted"
+    location_reference: "$.contact_distance.sparsity"
+    location_candidate: "$.contact_distance.sparsity"
+    metric: deterministic
+    algorithm_class: deterministic-strict
+    threshold: 0.0
+
 acceleration:
   enabled: true
   max_iterations: 50

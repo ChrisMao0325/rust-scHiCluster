@@ -38,22 +38,44 @@ pub fn convolve2d_mirror(
     let mut out = vec![0.0_f32; nrows * ncols];
     let nr_i32 = nrows as i32;
     let nc_i32 = ncols as i32;
-    let kh_i32 = kh as i32;
-    let kw_i32 = kw as i32;
+
+    // acceleration: ACCELERATION_PLAYBOOK §3.4 hoist-invariant-index-computation (E)
+    //
+    // mirror_index performs a modulo and two branches, and it is a pure
+    // function of (offset, extent) — it never reads `a`. The column mirror
+    // depends only on (j, q), yet the original loop recomputed it once per
+    // (i, j, p, q): nrows*ncols*kh*kw calls, ~127M for a 1024x1024 input with
+    // an 11x11 kernel. Tabulating both axes once turns every one of those into
+    // an array load.
+    //
+    // Integer arithmetic only: the tables reproduce exactly the index sequence
+    // the loop computed before, so each float multiply-add sees the same
+    // operands in the same order. Bit-identical output, hence (E)-exact —
+    // confirmed by conv.convolved holding its gate metric.
+    let row_map: Vec<usize> = (0..(nrows + kh))
+        .map(|t| mirror_index(t as i32 - oh, nr_i32))
+        .collect();
+    let col_map: Vec<usize> = (0..(ncols + kw))
+        .map(|t| mirror_index(t as i32 - ow, nc_i32))
+        .collect();
+
+    // Pre-flip the kernel so the inner loop reads it forwards. Same values in
+    // the same accumulation order — only the addressing changes.
+    let mut kflip = vec![0.0_f32; kh * kw];
+    for p in 0..kh {
+        for q in 0..kw {
+            kflip[p * kw + q] = kernel[(kh - 1 - p) * kw + (kw - 1 - q)];
+        }
+    }
 
     out.par_chunks_mut(ncols).enumerate().for_each(|(i, row_out)| {
-        let i_i = i as i32;
         for j in 0..ncols {
-            let j_i = j as i32;
             let mut acc = 0.0_f32;
-            for p in 0..kh_i32 {
-                let src_i = mirror_index(i_i + p - oh, nr_i32);
-                let row_base = src_i * ncols;
-                let k_row = (kh_i32 - 1 - p) as usize * kw;
-                for q in 0..kw_i32 {
-                    let src_j = mirror_index(j_i + q - ow, nc_i32);
-                    let k_val = kernel[k_row + (kw_i32 - 1 - q) as usize];
-                    acc += k_val * a[row_base + src_j];
+            for p in 0..kh {
+                let row_base = row_map[i + p] * ncols;
+                let k_row = p * kw;
+                for q in 0..kw {
+                    acc += kflip[k_row + q] * a[row_base + col_map[j + q]];
                 }
             }
             row_out[j] = acc;

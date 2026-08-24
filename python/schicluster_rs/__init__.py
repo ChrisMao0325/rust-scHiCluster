@@ -222,9 +222,17 @@ from schicluster_rs.domain import (
 
 from schicluster_rs.compartment import single_chrom_compartment as _single_chrom_compartment
 from schicluster_rs.embedding import make_chrom_matrix as _make_chrom_matrix
+from schicluster_rs.gene_score import (
+    gene_score_impute as _gene_score_impute,
+    gene_score_raw as _gene_score_raw,
+)
+from schicluster_rs.contact_distance import compute_decay as _compute_decay
 
 single_chrom_compartment = _single_chrom_compartment
 make_chrom_matrix = _make_chrom_matrix
+gene_score_impute = _gene_score_impute
+gene_score_raw = _gene_score_raw
+compute_decay = _compute_decay
 
 
 class _DomainRStub:
@@ -290,6 +298,16 @@ def patch_schicluster() -> bool:
         # ---- embedding module ----
         from schicluster.embedding import calc_embedding as _emb_mod
         _emb_mod.make_chrom_matrix = make_chrom_matrix
+        # ---- gene-score module (Phase 5) ----
+        # The orchestrator resolves these names from module globals at
+        # exe.submit() time, so rebinding here is enough for the existing
+        # ProcessPoolExecutor to pick up the Rust versions.
+        from schicluster.draft import gene_score as _gene_score_mod
+        _gene_score_mod.gene_score_impute = gene_score_impute
+        _gene_score_mod.gene_score_raw = gene_score_raw
+        # ---- contact-distance module (Phase 5) ----
+        from schicluster.cool import contact_distance as _contact_distance_mod
+        _contact_distance_mod.compute_decay = compute_decay
         return True
     except ImportError:
         return False
@@ -302,4 +320,5 @@ __all__ = [
     "loop_background", "find_summit",
     "insulation_score_chrom",
     "single_chrom_compartment", "make_chrom_matrix",
+    "gene_score_impute", "gene_score_raw", "compute_decay",
 ]

@@ -1,6 +1,6 @@
 [package]
 name = "schicluster_rs"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2021"
 description = "Rust port of scHiCluster's impute_chromosome inner pipeline."
 license = "MIT"
@@ -16,6 +16,7 @@ numpy = "0.22"
 ndarray = { version = "0.16", features = ["rayon"] }
 sprs = "0.11"
 rayon = "1.10"
+flate2 = "1.0"
 
 [profile.release]
 opt-level = 3

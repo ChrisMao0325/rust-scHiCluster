@@ -56,6 +56,8 @@ guides live in [`tutorial/`](tutorial/README.md):
 - [tutorial/domain.md](tutorial/domain.md)
 - [tutorial/compartment.md](tutorial/compartment.md)
 - [tutorial/embedding.md](tutorial/embedding.md)
+- [tutorial/gene_score.md](tutorial/gene_score.md)
+- [tutorial/contact_distance.md](tutorial/contact_distance.md)
 
 ### Snakemake (loop calling)
 
@@ -82,6 +84,8 @@ Currently exposed (all other subcommands: use `hicluster` directly):
 | `schicluster-rs compartment ...` | **yes** | Per-chrom CpG-weighted compartment score + decay-normalised A/B/AB strength. Rebind happens at module level so the per-cell `ProcessPoolExecutor` inside `multiple_cell_compartment` transparently uses Rust. |
 | `schicluster-rs embedding ...` | **yes** (modest) | Cell-by-feature upper-tri extraction with distance filter + scalar scaling, before SVD. SVD stays sklearn — intentional, see [docs/PERFORMANCE.md](docs/PERFORMANCE.md). Mostly I/O-bound. |
 | `schicluster-rs cpg-ratio ...` | no | `bedtools nuc` + pandas. Included as the upstream prerequisite step for `compartment`. |
+| `schicluster-rs gene-score ...` | **yes** | Per-gene CSR window sums replace ~78.7k scipy submatrix allocations per cell. Bit-identical to upstream, including its bin-0 empty-window quirk — see [tutorial/gene_score.md](tutorial/gene_score.md). `--mode impute` is where the win is; `--mode raw` still builds its matrix in pandas. |
+| `schicluster-rs contact-distance ...` | **yes** (modest) | Streams the gzipped contact TSV in Rust instead of building a DataFrame. Bounded by gzip inflate, so ~4.4x — see [docs/PERFORMANCE.md](docs/PERFORMANCE.md). |
 
 Concrete example covering the full
 [scHiCluster tutorial flow](https://zhoujt1994.github.io/scHiCluster/intro.html):
@@ -132,6 +136,23 @@ schicluster-rs domain \
     --cell_table_path impute/25K/cell_table.tsv \
     --output_prefix dataset/sample \
     --resolution 25000 --window_size 10 --cpu 96
+
+# 6. Per-gene contact scores from the imputed cools (Rust-backed)
+schicluster-rs gene-score \
+    --cell_table_path impute/10K/cell_table.tsv \
+    --gene_meta_path gene_meta.tsv --resolution 10000 \
+    --output_hdf_path gene_score.hdf \
+    --chrom_size_path chrom_sizes.txt \
+    --chr1 1 --pos1 2 --chr2 3 --pos2 4 \
+    --cpu 64 --mode impute
+
+# 7. Contact-distance decay + per-chrom sparsity (Rust-backed)
+schicluster-rs contact-distance \
+    --contact_table contact_table_rmbkl.tsv \
+    --chrom_size_path chrom_sizes.txt \
+    --output_prefix dataset/sample \
+    --resolution 10000 \
+    --chr1 1 --pos1 2 --chr2 3 --pos2 4 --cpu 20
 ```
 
 Run `schicluster-rs --help` for the dispatcher help, or

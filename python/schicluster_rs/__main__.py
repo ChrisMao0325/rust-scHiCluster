@@ -35,6 +35,12 @@ Subcommands currently exposed:
 * ``cpg-ratio``      - bedtools-nuc + pandas; no Rust speedup, just
   the upstream prerequisite step for ``compartment``, included so a
   single binary covers the full compartment workflow.
+* ``gene-score``     - per-gene rectangular window sums over the per-chrom
+  CSR, binary-searched in place instead of allocating one scipy submatrix
+  per gene. Both --mode impute and --mode raw are Rust-backed; impute mode
+  is where the win is, since raw mode still builds its matrix in pandas.
+* ``contact-distance`` - streams the gzipped contact TSV in Rust and
+  histograms distances without ever building a DataFrame.
 
 For any other upstream subcommand, fall back to ``hicluster <subcmd>``
 directly; this CLI is intentionally narrow.
@@ -55,6 +61,8 @@ _SUPPORTED = {
     "compartment",  # CpG-weighted comp + decay-normalised strength (Phase 3)
     "embedding",    # cell-by-feature extraction; SVD stays sklearn (Phase 4)
     "cpg-ratio",    # bedtools-nuc + pandas; no Rust speedup, included for completeness
+    "gene-score",        # per-gene CSR window sums (Phase 5)
+    "contact-distance",  # streaming gzip contact reader (Phase 5)
 }
 _HELP_FLAGS = {"-h", "--help", "-v", "--version"}
 
@@ -75,6 +83,8 @@ def main() -> int:
                 compartment         CpG-weighted compartment score + A/B strength.
                 embedding           Cell-by-feature extraction (pre-SVD).
                 cpg-ratio           bedtools-nuc CpG ratio for compartment.
+                gene-score          Per-gene contact scores from imputed or raw contacts.
+                contact-distance    Per-cell distance decay + per-chrom sparsity.
 
             For per-subcommand options, run:
                 schicluster-rs <subcommand> --help

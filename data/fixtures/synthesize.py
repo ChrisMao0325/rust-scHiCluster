@@ -8,6 +8,7 @@ Usage:
 """
 from __future__ import annotations
 
+import gzip
 import pathlib
 
 import cooler
@@ -252,6 +253,163 @@ def embedding_small_fixture(seed: int = 48) -> dict:
     }
 
 
+# ---- Phase 5 fixture parameters (gene-score) ----
+GENE_N_BINS = 60
+GENE_RESOLUTION = 10_000
+GENE_CHROM = "chr1"
+GENE_CHROM_SIZE = GENE_N_BINS * GENE_RESOLUTION - 1
+
+
+def _gene_windows():
+    """(start_bin, end_bin, gene_id) triples, already floor-divided by resolution.
+
+    Deliberately pins the three upstream edge cases from the design spec:
+      * GENE_AT_BIN0 starts at bin 0, so gene_score_impute's (xx-1) slice start
+        is -1, which scipy resolves to n-1 -> empty window -> score 0.0.
+      * GENE_OVERRUN ends at the last bin, so the (yy+2) column bound overruns
+        n_cols and scipy clips it.
+      * GENE_EMPTY sits in a bin range the synthetic matrix leaves at zero.
+    """
+    return [
+        (0, 4, "GENE_AT_BIN0"),
+        (5, 9, "GENE_NORMAL_A"),
+        (12, 12, "GENE_SINGLE_BIN"),
+        (20, 31, "GENE_NORMAL_B"),
+        (40, 44, "GENE_EMPTY"),
+        (GENE_N_BINS - 3, GENE_N_BINS - 1, "GENE_OVERRUN"),
+    ]
+
+
+def gene_score_small_fixture(seed: int = 49):
+    """Sparse upper-tri contact matrix + a gene table + a raw contact file.
+
+    Writes gene_score_small.cool (impute-mode input) and
+    gene_score_small.contact.tsv.gz (raw-mode input), and returns the arrays
+    both drivers need.
+    """
+    rng = np.random.default_rng(seed)
+    rows, cols, vals = [], [], []
+    for d in range(1, 25):
+        for r in range(GENE_N_BINS - d):
+            c = r + d
+            # leave bins 38..46 empty so GENE_EMPTY really is empty
+            if 38 <= r <= 46 or 38 <= c <= 46:
+                continue
+            if rng.uniform() < 0.35:
+                rows.append(r)
+                cols.append(c)
+                vals.append(float(rng.uniform(0.1, 5.0)))
+    rows = np.asarray(rows, dtype=np.int64)
+    cols = np.asarray(cols, dtype=np.int64)
+    vals = np.asarray(vals, dtype=np.float64)
+    order = np.lexsort((cols, rows))
+    rows, cols, vals = rows[order], cols[order], vals[order]
+
+    bins = _bins_df(GENE_N_BINS, GENE_RESOLUTION, GENE_CHROM)
+    pixels = pd.DataFrame({
+        "bin1_id": rows,
+        "bin2_id": cols,
+        "count": vals.astype(np.float32),
+    })
+    cool_path = FIXTURE_DIR / "gene_score_small.cool"
+    if cool_path.exists():
+        cool_path.unlink()
+    cooler.create_cooler(cool_uri=str(cool_path), bins=bins, pixels=pixels,
+                         ordered=True, dtypes={"count": np.float32})
+    print("wrote {} ({} bins, {} nnz)".format(cool_path, GENE_N_BINS, len(pixels)))
+
+    # Raw-mode input: 4-column contact TSV (chrom1=0, pos1=1, chrom2=2, pos2=3).
+    # gene_score_raw does (pos - 1) // resolution, so emit 1-based midpoints.
+    raw_path = FIXTURE_DIR / "gene_score_small.contact.tsv.gz"
+    lines = []
+    for r, c in zip(rows, cols):
+        n_dup = 1 + int(rng.integers(0, 3))
+        for _ in range(n_dup):
+            p1 = int(r) * GENE_RESOLUTION + 1
+            p2 = int(c) * GENE_RESOLUTION + 1
+            lines.append("{}\t{}\t{}\t{}".format(GENE_CHROM, p1, GENE_CHROM, p2))
+    with gzip.open(str(raw_path), "wt") as fh:
+        fh.write("\n".join(lines) + "\n")
+    print("wrote {} ({} contacts)".format(raw_path, len(lines)))
+
+    starts, ends, ids = zip(*_gene_windows())
+    return {
+        "gene_score.chrom": np.asarray([GENE_CHROM], dtype="<U16"),
+        "gene_score.chrom_size": np.asarray([GENE_CHROM_SIZE], dtype=np.int64),
+        "gene_score.resolution": np.asarray(GENE_RESOLUTION, dtype=np.int64),
+        "gene_score.gene_start_bin": np.asarray(starts, dtype=np.int64),
+        "gene_score.gene_end_bin": np.asarray(ends, dtype=np.int64),
+        "gene_score.gene_id": np.asarray(ids, dtype="<U16"),
+    }
+
+
+# ---- Phase 5 fixture parameters (contact-distance) ----
+CD_RESOLUTION = 10_000
+CD_CHROMS = ["chr1", "chr2"]
+CD_CHROM_SIZES = [10_000_000, 6_000_000]
+
+
+def _cd_bin_edges():
+    """Exactly upstream's log-spaced edges, from the largest chrom size."""
+    nbins = np.floor(np.log2(max(CD_CHROM_SIZES) / 2500) / 0.125)
+    return 2500 * np.exp2(0.125 * np.arange(nbins + 1))
+
+
+def contact_distance_small_fixture(seed: int = 50):
+    """7-column contact TSV exercising every filter and histogram edge rule.
+
+    Column layout matches the upstream defaults: chrom1=1, pos1=2, chrom2=5,
+    pos2=6, with filler in 0, 3, 4.
+    """
+    rng = np.random.default_rng(seed)
+    edges = _cd_bin_edges()
+    rows = []
+
+    def emit(c1, p1, c2, p2):
+        rows.append("r{}\t{}\t{}\t+\t-\t{}\t{}".format(len(rows), c1, p1, c2, p2))
+
+    # 1. ordinary cis contacts on both known chroms
+    for chrom, size in zip(CD_CHROMS, CD_CHROM_SIZES):
+        for _ in range(400):
+            p1 = int(rng.integers(0, size - 1))
+            span = int(rng.integers(1, min(size - p1, 2_000_000)))
+            emit(chrom, p1, chrom, p1 + span)
+    # 2. below the first edge (2500 bp) -> dropped by np.histogram
+    for _ in range(20):
+        p1 = int(rng.integers(0, 1_000_000))
+        emit("chr1", p1, "chr1", p1 + int(rng.integers(1, 2000)))
+    # 3. exactly the last edge -> kept, lands in the final (right-closed) bin
+    emit("chr1", 0, "chr1", int(round(edges[-1])))
+    # 4. beyond the last edge -> dropped
+    emit("chr1", 0, "chr1", int(round(edges[-1])) + 5000)
+    # 5. trans contacts -> dropped by the cis filter
+    for _ in range(30):
+        emit("chr1", int(rng.integers(0, 5_000_000)), "chr2", int(rng.integers(0, 5_000_000)))
+    # 6. unknown chrom -> dropped by the isin filter
+    for _ in range(15):
+        p1 = int(rng.integers(0, 1_000_000))
+        emit("chrUn", p1, "chrUn", p1 + 50_000)
+    # 7. duplicate bin pairs -> sparsity counts distinct pairs only
+    for _ in range(25):
+        emit("chr2", 1_000_000, "chr2", 1_300_000)
+    # 8. same-bin contacts -> counted in the histogram, excluded from sparsity
+    for _ in range(10):
+        emit("chr1", 2_000_000, "chr1", 2_000_500)
+
+    out = FIXTURE_DIR / "contact_distance_small.tsv.gz"
+    with gzip.open(str(out), "wt") as fh:
+        fh.write("\n".join(rows) + "\n")
+    print("wrote {} ({} contacts)".format(out, len(rows)))
+
+    return {
+        "contact_distance.chroms": np.asarray(CD_CHROMS, dtype="<U16"),
+        "contact_distance.chrom_sizes": np.asarray(CD_CHROM_SIZES, dtype=np.int64),
+        "contact_distance.bin_edges": edges.astype(np.float64),
+        "contact_distance.resolution": np.asarray(CD_RESOLUTION, dtype=np.int64),
+        "contact_distance.cols": np.asarray([1, 2, 5, 6], dtype=np.int64),
+    }
+
+
 def main() -> None:
     FIXTURE_DIR.mkdir(parents=True, exist_ok=True)
     # ---- conv_small (Phase 0) ----
@@ -286,6 +444,16 @@ def main() -> None:
     print(f"wrote {FIXTURE_DIR / 'embedding_small.npz'} ({len(emb_pack)} keys)")
     print(f"  cells.shape     = {emb_pack['embedding.cells'].shape}")
     print(f"  dist_bins       = {int(emb_pack['embedding.dist']) // int(emb_pack['embedding.resolution'])}")
+    # ---- gene_score_small (Phase 5) ----
+    gs_pack = gene_score_small_fixture()
+    np.savez(FIXTURE_DIR / "gene_score_small.npz", **gs_pack)
+    print("wrote {} ({} keys)".format(FIXTURE_DIR / 'gene_score_small.npz', len(gs_pack)))
+    print("  genes           = {}".format(gs_pack['gene_score.gene_id'].tolist()))
+    # ---- contact_distance_small (Phase 5) ----
+    cd_pack = contact_distance_small_fixture()
+    np.savez(FIXTURE_DIR / "contact_distance_small.npz", **cd_pack)
+    print("wrote {} ({} keys)".format(FIXTURE_DIR / 'contact_distance_small.npz', len(cd_pack)))
+    print("  hist bins       = {}".format(cd_pack['contact_distance.bin_edges'].size - 1))
 
 
 if __name__ == "__main__":
