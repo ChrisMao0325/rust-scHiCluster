@@ -9,6 +9,8 @@ Per-module usage guides for the Rust-backed direct API.
 | Domain (insulation + TopDom) | [domain.md](domain.md) | 2 | drops rpy2 / R |
 | Compartment | [compartment.md](compartment.md) | 3 | per-chrom inner kernel |
 | Embedding (cell-by-feature) | [embedding.md](embedding.md) | 4 | modest (I/O-bound); SVD stays sklearn |
+| Gene score | [gene_score.md](gene_score.md) | 5 | ~217× on the per-gene window loop |
+| Contact distance | [contact_distance.md](contact_distance.md) | 5 | ~4.4× (gzip-inflate bound) |
 
 ## Two integration styles
 
@@ -34,7 +36,9 @@ share the same underlying Rust extension.
 Every public function below is parity-gated against the upstream Python
 reference. Per-output classes and thresholds are pre-registered in
 [`data/manifest.yaml`](../data/manifest.yaml) and live snapshots of the
-metrics are in [docs/ITERATION_LOG.md](../docs/ITERATION_LOG.md). Full
+metrics are in [docs/ITERATION_LOG.md](../docs/ITERATION_LOG.md) (per-phase
+ports) and [docs/ACCELERATION_LOG.md](../docs/ACCELERATION_LOG.md)
+(the acceleration search). Full
 gate status, accuracy notes and algorithm descriptions are in
 [docs/PERFORMANCE.md](../docs/PERFORMANCE.md).
 

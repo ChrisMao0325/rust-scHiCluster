@@ -283,7 +283,7 @@ Create `docs/ACCELERATION_LOG.md`. Substitute the measured numbers for every `<.
 > `engine/plot_evolution.py` to render `examples/evolution.png`. Keep the field
 > names verbatim.
 >
-> This file is deliberately separate from [ITERATION_LOG.md](ITERATION_LOG.md),
+> This file is deliberately separate from [ITERATION_LOG.md](../../ITERATION_LOG.md),
 > which records the per-phase **port** history (iterations 0-5) in this repo's
 > own long-form format. Those entries cover five different modules and three
 > different workloads, and iterations 1-3 carry no timings at all, so they
@@ -601,7 +601,7 @@ so the absence is auditable rather than merely empty.
 | Hoisted mirror-index tables | `conv.rs` | **(E), Phase 6 iter 1** | Pure integer tabulation of a data-independent function. The float operand sequence is unchanged; output is bit-identical. |
 | Rayon across genes | `gene_score.rs` | **(E), Phase 5** | Genes are independent outputs. Each gene's reduction reproduces scipy's own two-stage order (serial per-row matvec, then pairwise over row sums) and is bit-exact against it. |
 | `target-cpu=native` | crate-wide | **(E), benchmark-only** | No kernel enables reassociating fast-math flags, so wider vector units still execute the fixed-order reduction. Not shipped. |
-| Prefix-sum insulation window | `insulation.rs` | **(B), rejected** | `P[b] - P[a]` is a floating-point identity only in exact arithmetic. Error scales with the prefix length `n` rather than the window length `w`, and cancels two separately-rounded large values. Bound and derivation in [ACCELERATION_LOG.md](ACCELERATION_LOG.md) iter 3. Out of scope under an (E)-only policy. |
+| Prefix-sum insulation window | `insulation.rs` | **(B), rejected** | `P[b] - P[a]` is a floating-point identity only in exact arithmetic. Error scales with the prefix length `n` rather than the window length `w`, and cancels two separately-rounded large values. Bound and derivation in [ACCELERATION_LOG.md](../../ACCELERATION_LOG.md) iter 3. Out of scope under an (E)-only policy. |
 | Cross-cell rayon reduction | `merge.rs` | **(B), not attempted** | Phase 1 already chose a `BTreeMap<(u32,u32), f64>` specifically so cross-cell accumulation emits in deterministic row-major order. Parallelising it would reorder an f32 sum across cells, bounded by `n_cells * eps_32 * max\|x\|`. The determinism was the point; not revisited. |
 
 ### If a (B) rewrite is ever accepted
@@ -1024,7 +1024,7 @@ to the CLI table:
 | Subcommand | Rust speedup? | Notes |
 |---|---|---|
 | `schicluster-rs gene-score ...` | **yes** | Per-gene CSR window sums replace ~78.7k scipy submatrix allocations per cell. Bit-identical to upstream. `--mode impute` is where the win is; `--mode raw` still builds its matrix in pandas. |
-| `schicluster-rs contact-distance ...` | **yes** (modest) | Streams the gzipped contact TSV in Rust instead of building a DataFrame. Bounded by gzip inflate — see [docs/PERFORMANCE.md](docs/PERFORMANCE.md). |
+| `schicluster-rs contact-distance ...` | **yes** (modest) | Streams the gzipped contact TSV in Rust instead of building a DataFrame. Bounded by gzip inflate — see [docs/PERFORMANCE.md](../../PERFORMANCE.md). |
 
 and append both to the worked example flow.
 
