@@ -164,3 +164,51 @@ notes: |
 ```
 
 ---
+
+## iter 3 — prefix-sum sliding window for insulation (rejected: inadmissible)
+
+```yaml
+iter: 3
+status: REJECT_INADMISSIBLE
+action: prefix_sum_insulation_window
+playbook_section: "§2.1"
+admissibility: bounded
+admissibility_evidence: |
+  A prefix-sum window computes sum(w) as P[b] - P[a]. In exact arithmetic that
+  is an identity, but in floating point it is not: P[b] and P[a] are each the
+  result of accumulating over a prefix far longer than the window, so the
+  subtraction cancels two large, separately-rounded quantities. The error is
+  governed by the prefix length, not the window length, so this is a (B)
+  bounded-epsilon rewrite, not (E).
+perturbation_bound: |
+  Direct window sum:  |dS| <= (w-1)*eps_32*max|x|
+  Prefix-sum window:  |dS| <= (n-1)*eps_32*max|x|, plus cancellation
+                             amplification |P[b]| / |P[b] - P[a]|
+  With the Phase 2 fixture (n = 80, w = 5, eps_32 = 1.19e-7) the prefix form is
+  ~20x looser before cancellation is considered; on a real 25 kb chr1
+  (n = 7820) it is ~2000x looser. insulation.score currently sits at 5.96e-08
+  against a 1.0e-6 gate, i.e. ~17x of headroom — which a 2000x looser bound
+  would consume outright.
+wall_clock_mean_s: null
+wall_clock_stddev_s: null
+parity_metric: null
+parity_passes: null
+notes: |
+  Not implemented. Phase 6's admissibility policy is (E)-exact only, so a (B)
+  rewrite is out of scope regardless of its speedup.
+
+  Recorded here rather than skipped silently because the predecessor design
+  spec (docs/superpowers/specs/2026-06-02-rust-port-loop-domain-compartment-
+  embedding-design.md §7) listed "banded layout for sliding-window insulation"
+  in its (E) column, and that classification is wrong for a prefix-sum
+  formulation. insulation.rs keeps its direct per-window reduction.
+
+  A banded *storage* layout with an unchanged per-window reduction would still
+  be (E) and remains available to a future phase; it is the prefix-sum
+  arithmetic, not the banding, that crosses into (B).
+
+  This block is intentionally absent from examples/evolution.png:
+  plot_evolution only plots entries whose status is `baseline` or `ACCEPT`.
+```
+
+---
