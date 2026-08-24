@@ -11,12 +11,13 @@ about.
 from __future__ import annotations
 
 import numpy as np
-import pandas as pd
 
 
 def compute_decay(cell_name, contact_path, bins, chrom_sizes, resolution,
                   chrom1=1, chrom2=5, pos1=2, pos2=6):
     """Distance-decay histogram + per-chrom sparsity for one cell."""
+    import pandas as pd
+
     from schicluster_rs._rust import py_contact_decay_cell
 
     hist, sparsity = py_contact_decay_cell(

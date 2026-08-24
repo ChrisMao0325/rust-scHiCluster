@@ -13,7 +13,6 @@ Two upstream targets:
 from __future__ import annotations
 
 import numpy as np
-import pandas as pd
 
 
 TAG_GAP = 0
@@ -55,6 +54,8 @@ def _topdom_chrom_to_df(matrix, bins, window_size, stat_filter=True):
     ``call_domain_and_insulation`` constructs before calling ``run_top_dom``.
     Returns columns: ``chrom``, ``chromStart``, ``chromEnd``, ``name``.
     """
+    import pandas as pd
+
     try:
         from schicluster_rs._rust import py_topdom_chrom as _rust_topdom
     except ImportError as e:
@@ -99,6 +100,8 @@ def run_top_dom(j, p, x, bins, window_size):
     builds (matrix.indices+1, matrix.indptr, matrix.data). We rebuild the
     dense symmetric matrix here and hand it to the Rust kernel.
     """
+    import pandas as pd
+
     from scipy.sparse import csc_matrix
     j = np.asarray(j).astype(np.int64) - 1  # back to 0-indexed
     p = np.asarray(p).astype(np.int64)

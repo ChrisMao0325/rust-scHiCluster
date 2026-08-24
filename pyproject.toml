@@ -22,6 +22,13 @@ classifiers = [
 dependencies = [
     "numpy>=1.23",
     "scipy>=1.10",
+    # The domain / contact_distance / loop / gene_score wrappers reassemble
+    # upstream's DataFrame return shapes, so pandas is a genuine runtime
+    # dependency of the public API — not just a dev/test one.
+    # `cooler` stays optional (dev extra): only the cool-reading entry points
+    # need it, they import it lazily, and it is a heavy dependency to force on
+    # users who only call the in-memory kernels.
+    "pandas>=1.1",
 ]
 
 [project.scripts]
