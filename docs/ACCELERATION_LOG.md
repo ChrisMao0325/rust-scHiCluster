@@ -116,3 +116,51 @@ notes: |
 ```
 
 ---
+
+## iter 2 — enable target-cpu=native (rejected: no measurable gain)
+
+```yaml
+iter: 2
+status: REJECT_SLOW
+action: target_cpu_native
+playbook_section: "§3.4"
+admissibility: exact
+admissibility_evidence: |
+  No kernel in this crate enables reassociating fast-math flags, so a wider
+  vector unit still executes the same fixed-order reduction. Confirmed
+  empirically rather than assumed: rebuilt with RUSTFLAGS="-C
+  target-cpu=native", the full 21-output gate stayed green and every metric was
+  bit-identical to the portable build (conv.convolved 1.7881393432617188e-07,
+  loop_bkg.E 5.960464477539062e-07, scan_kernels.donut 2.384185791015625e-07,
+  insulation.score 5.960464477539063e-08). Admissible — but admissibility is
+  not the reason it was rejected.
+wall_clock_mean_s: 0.0943
+wall_clock_stddev_s: 0.0007
+wall_clock_runs_s: [0.0293, 0.0299, 0.0306]
+warmup_run_s: 0.0284
+speedup_vs_previous: 1.003
+speedup_vs_baseline: 1.483
+parity_metric: 0.0
+parity_class: deterministic-bounded
+parity_threshold: 1.0e-6
+parity_passes: true
+notes: |
+  Rejected for no speedup, not for inadmissibility. 0.0943 s against the
+  portable build's 0.0946 s is a 0.3% difference on a summed stddev of ~0.0008
+  — indistinguishable from noise. Per-workload it is the same story: conv
+  0.0299 vs 0.0306, contact_distance 0.0590 vs 0.0591, and gene_score actually
+  measured slightly worse (0.0054 vs 0.0049).
+
+  That result is unsurprising in hindsight. After iter 1 the conv inner loop is
+  bound by memory access through two index tables, not by arithmetic width, and
+  the other two kernels are bound by gzip inflate and by sparse-index chasing
+  respectively. None of them is a dense FMA loop, which is what wider vectors
+  would help.
+
+  Cargo.toml is unchanged and the released wheel stays portable. Since there is
+  no measurable gain, PERFORMANCE.md does not advertise this as an opt-in knob
+  — recommending a non-portable build for a 0.3% noise-level difference would
+  be misleading.
+```
+
+---
