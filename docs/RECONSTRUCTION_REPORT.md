@@ -15,7 +15,7 @@
 | Threshold | per-output (manifest); read-only since Phase 0 |
 | **Final parity** | **21 / 21 outputs pass.** Worst deterministic max-abs-error **9.537e-07** (`loop_bkg.T`) against a 1e-6 gate. Nine outputs are exactly `0.0`. |
 | Audit class | deterministic-bounded (the loosest class any output carries) |
-| Speedup vs Python | 2.3× (conv), **217×** (gene-score), 4.4× (contact-distance), ~9.6× (impute, chr1 @ 25 kb). See §4. |
+| Speedup vs Python | All 11 kernels profiled. **218×** (gene-score), 22× (compartment), 21× (find_summit), 10.6× (insulation), 4.1× (contact-distance), 2.5× (conv, embedding), 1.5× (merge, scan_kernels). Real-data impute: **4.6–5.6×**. See §4. |
 
 Naming deviation from the rebuildpy convention (`rs-schicluster` /
 `rs_schicluster`) is deliberate and documented in
@@ -89,34 +89,70 @@ Per-cell timings and per-fixture values are visualised in
 
 ## 4. Acceleration evidence
 
-![evolution](../examples/evolution.png)
-
-Phase 6 ran an **(E)-exact-only** search: no rewrite that reorders a
-floating-point reduction was committed. Full log in
-[ACCELERATION_LOG.md](ACCELERATION_LOG.md); per-candidate reasoning in
+Two (E)-exact-only acceleration passes. **No rewrite that reorders a
+floating-point reduction was committed.** Per-candidate reasoning in
 [MATH.md](MATH.md).
+
+### Pass A — conv-focused ([ACCELERATION_LOG.md](ACCELERATION_LOG.md))
+
+![evolution](../examples/evolution.png)
 
 | Iteration | Rewrite | Admissibility | Verdict |
 |---|---|---|---|
-| 0 | baseline (Phase 5 close) | — | 0.1399 s summed benchmark |
-| 1 | hoist mirror-index tables out of the conv inner loop | **(E)** exact | **ACCEPT** — 0.0946 s (1.48× overall; conv 2.42×) |
-| 2 | `target-cpu=native` | (E) exact, verified bit-identical | **REJECT_SLOW** — 0.0943 s, noise |
+| 0 | baseline (Phase 5 close), 3 workloads | — | 0.1399 s |
+| 1 | hoist mirror-index tables out of `conv.rs` | **(E)** exact | **ACCEPT** — 0.0946 s; conv 2.42×, flipping 0.9× → 2.3× vs scipy |
+| 2 | `target-cpu=native` | (E), verified bit-identical | **REJECT_SLOW** — 0.0943 s, noise |
 | 3 | prefix-sum sliding window for insulation | **(B)** bounded | **REJECT_INADMISSIBLE** — never built |
 
-The accepted rewrite is the substantive one. `conv2d_mirror` was **0.9×** —
-genuinely *slower* than `scipy.ndimage.convolve` at 1024² — because the inner
-loop recomputed `mirror_index` (an integer modulo plus two branches) once per
-`(i, j, p, q)`, ~127M times. Tabulating both axes made it **2.3× faster than
-scipy**, with output bit-identical (`conv.convolved` held its metric at exactly
-`1.7881393432617188e-07`).
+### Pass B — full-kernel survey ([ACCELERATION_LOG_SURVEY.md](ACCELERATION_LOG_SURVEY.md))
 
-Iteration 3 is recorded because the predecessor design spec §7 listed it in its
-(E) column, which is wrong: `P[b] − P[a]` makes the error scale with the
-chromosome length rather than the window length, and cancels two separately
-rounded large values.
+![evolution survey](../examples/evolution_survey.png)
 
-**No (B) rewrite was accepted**, so `MATH.md` derives no perturbation bound; it
-records the reasoning per candidate instead, so the absence is auditable.
+Pass A covered three workloads. Pass B extended `examples/bench_phase6.py` to
+**eleven — one per kernel in the crate** — because nothing had established
+whether the rest were fast.
+
+| Iteration | Rewrite | Admissibility | Verdict |
+|---|---|---|---|
+| 0 | baseline, all 11 workloads | — | 1.6000 s |
+| 1 | hoist mirror-index tables out of `lib.rs::gaussian_filter_2d` | **(E)** exact | **ACCEPT** — real-data 100 kb chr19 goes 1.04× → **3.68×** |
+| 2 | `merge.rs`: packed key + stable radix sort, replacing two `BTreeMap`s | **(E)** exact | **ACCEPT** — 1.0527 s; merge 10.4×, flipping **0.1× → 1.5×** vs scipy |
+
+The survey found **two kernels slower than their Python reference**, and both
+were fixed:
+
+- **`merge.rs` at 0.1×.** Two `BTreeMap<(u32,u32), f64>` meant two O(log k) tree
+  descents and a heap allocation per unique key, for every triplet. Phase 1
+  chose the BTreeMap deliberately, to guarantee deterministic row-major
+  emission — a real requirement. The rewrite keeps that guarantee (a packed
+  `row*ncols+col` key sorts row-major; an LSD radix sort is stable, so each
+  key's f64 additions keep their input order) and drops the cost.
+- **`lib.rs::gaussian_filter_2d`.** Pass A's report claimed the impute path
+  inherited the conv fix. **That was wrong** — `lib.rs` has its own separable
+  Gaussian that never calls `convolve2d_mirror`, and it carried the identical
+  un-hoisted `mirror_index`. It mattered most exactly where the port looked
+  worst: 100 kb chr19 was **1.04×**, i.e. the Rust backend bought users nothing
+  on small chromosomes at coarse resolution.
+
+Both are verified bit-identical, not merely within tolerance: the 21-output
+gate metrics are unchanged, and re-imputing real cells gives
+`max|new_rust − old_rust| = 0.0` with the error against upstream still
+`4.470348358154297e-08`.
+
+Two of the survey's own benchmark references were wrong first, and are recorded
+because the failure mode generalises — a bad reference does not report "no
+result", it reports a confident wrong result with an unpredictable sign:
+
+- `compartment` first measured **0.1×** because the reference skipped
+  `compartment_strength` (which the Rust call computed). Truly **22.3× faster**.
+- `merge` first measured **2.8× faster** against a pure-Python dict loop
+  instead of scipy's C-level sparse addition. Truly **0.1×**, i.e. slower.
+
+Kernels examined and deliberately left alone are tabulated at the end of
+[ACCELERATION_LOG_SURVEY.md](ACCELERATION_LOG_SURVEY.md).
+
+**No (B) rewrite was accepted**, so [MATH.md](MATH.md) derives no perturbation
+bound; it records the reasoning per candidate so the absence is auditable.
 
 ## 5. Code quality audit
 
@@ -156,7 +192,11 @@ records the reasoning per candidate instead, so the absence is auditable.
    timings.** `examples/evolution.ipynb` plots those points as gaps rather than
    inventing values; the aggregate figure covers only the Phase 6 acceleration
    search, the one sequence measured on a fixed workload.
-10. **`docs/ITERATION_LOG.md` does not match rebuildpy's strict canonical
+10. **The two acceleration logs use different workload sets** and therefore
+    different `wall_clock_mean_s` bases (3 workloads vs 11). They render to
+    separate figures on purpose; plotting them on one axis would show a
+    spurious jump where the benchmark grew.
+11. **`docs/ITERATION_LOG.md` does not match rebuildpy's strict canonical
     schema** (it uses `iteration:` / `status: accepted` / `timing:`), so
     `engine.plot_evolution` cannot parse it. Rather than rewrite six historical
     entries or fabricate the missing timings, the Phase 6 search was logged

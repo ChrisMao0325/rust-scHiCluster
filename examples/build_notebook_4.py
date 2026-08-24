@@ -68,7 +68,16 @@ HISTORY = [
     (6, "Accel baseline (Phase 5 close)",   0.1399, 0.0,      "baseline"),
     (7, "Accel - hoist mirror-index tables", 0.0946, 0.0,     "ACCEPT"),
     (8, "Accel - target-cpu=native",        0.0943, 0.0,      "REJECT_SLOW"),
+    (9,  "Survey baseline (11 workloads)",  1.6000, 0.0,      "baseline"),
+    (10, "Survey - hoist gaussian mirror-index", 1.5866, 0.0, "ACCEPT"),
+    (11, "Survey - merge radix sort",       1.0527, 0.0,      "ACCEPT"),
 ]
+
+# Iterations 6-8 are timed on a 3-workload benchmark; 9-11 on an 11-workload
+# one. The absolute values are therefore NOT comparable across that boundary,
+# which the panel below marks explicitly rather than letting the reader assume
+# a regression at iteration 9.
+BASIS_CHANGE_AT = 9
 THRESHOLD = 1e-6
 
 def panel(upto):
@@ -93,6 +102,11 @@ def panel(upto):
         ax[0].scatter([upto], [v], s=170, facecolors="none", edgecolors="red", zorder=5)
     ax[0].set_yscale("log"); ax[0].set_xlabel("iteration")
     ax[0].set_ylabel("wall-clock (s)"); ax[0].set_title("Wall-clock (lower is better)")
+    if upto >= BASIS_CHANGE_AT:
+        ax[0].axvline(BASIS_CHANGE_AT - 0.5, color="tab:orange", ls="--", lw=1.4)
+        ax[0].text(BASIS_CHANGE_AT - 0.45, ax[0].get_ylim()[1] * 0.55,
+                   "benchmark widened 3 -> 11 workloads" + chr(10) + "(totals not comparable)",
+                   fontsize=7, color="tab:orange")
     ax[0].set_xlim(-0.5, len(HISTORY) - 0.5); ax[0].grid(alpha=0.3)
 
     p = [h[3] for h in sub]
@@ -221,6 +235,59 @@ value iteration 0 recorded. conv went 0.0740 → 0.0306 s (2.42×), flipping it
 from 0.9× to **2.3× faster than scipy**. Total benchmark wall-clock 0.1399 →
 0.0946 s.
 [ACCEL_LOG ↩](../docs/ACCELERATION_LOG.md)"""),
+    (9, "Survey — profile every kernel, not just three", """
+The first acceleration pass benchmarked three workloads. Nothing had ever
+established whether the other eight kernels were fast, so
+`examples/bench_phase6.py` was extended to **eleven — one per kernel** — and
+every one measured against a Python reference.
+
+Two came back **slower than Python**: `merge` at 0.1× (eight times slower than
+scipy's sparse addition) and, on real data, the impute path's Gaussian filter.
+Two of my own references were also wrong and had inverted their verdicts:
+`compartment` first read 0.1× because the reference skipped
+`compartment_strength` while the Rust call computed it (truly 22.3× faster),
+and `merge` first read 2.8× *faster* against a pure-Python dict loop instead of
+scipy (truly 0.1×). A bad reference does not report "no result" — it reports a
+confident wrong result, with an unpredictable sign.
+
+No code changed in this iteration; the wall-clock jump is the benchmark
+widening from 3 workloads to 11, marked on the plot.
+[ACCEL_LOG ↩](../docs/ACCELERATION_LOG_SURVEY.md)"""),
+    (10, "Survey — hoist the Gaussian's mirror-index tables (accepted)", """
+Iteration 7 fixed `conv.rs` and the report claimed the impute path inherited it.
+**That was wrong.** `lib.rs` has its own separable `gaussian_filter_2d` that
+never calls `convolve2d_mirror`, and it carried the identical defect —
+`mirror_index` recomputed per `(i, j, kx)`, twice over the two separable
+passes, ~367M integer modulos for a 25 kb chr1.
+
+Same (E)-exact fix, and verified on real data rather than only the gate:
+re-imputing real cells gives `max|new − old| = 0.0`, bit-identical, with the
+error against upstream unchanged at 4.47e-08.
+
+The synthetic workload barely moves (1.03×) because at 2048² the RWR fixed
+point dominates. The real-data harness tells the true story: **100 kb chr19
+goes from 1.04× to 3.68× against upstream** — that configuration previously
+bought a user essentially nothing, because once the matrix is small enough for
+RWR not to dominate, the un-hoisted Gaussian did.
+[ACCEL_LOG ↩](../docs/ACCELERATION_LOG_SURVEY.md)"""),
+    (11, "Survey — replace merge's BTreeMap with a stable radix sort (accepted)", """
+`merge.rs` used two `BTreeMap<(u32, u32), f64>`, so every input triplet paid two
+O(log k) tree descents with a heap-allocated node per unique key — 4M tree
+operations and ~2M allocations for 50 cells × 40k nnz. That is why it was 8×
+slower than scipy doing the same job at C level.
+
+The BTreeMap was not an accident: Phase 1 chose it to guarantee deterministic
+row-major emission, and that requirement is real. The rewrite keeps the
+guarantee and drops the cost — a packed `row*ncols+col` key sorts row-major by
+construction, and an LSD radix sort is **stable**, so each key's f64 additions
+keep their input order. Stability is load-bearing: `sort_unstable_by_key` was
+measured 2× faster still and is deliberately unused, because reordering those
+additions would make the rewrite (B).
+
+merge went 0.571 → 0.055 s (**10.4×**), flipping **0.1× → 1.5× vs scipy**, with
+`merge.e_sum` and `merge.e2_sum` holding the exact metrics they have had since
+Phase 1.
+[ACCEL_LOG ↩](../docs/ACCELERATION_LOG_SURVEY.md)"""),
     (8, "Acceleration — `target-cpu=native` (rejected, no gain)", """
 Rebuilt with `RUSTFLAGS="-C target-cpu=native"`. Admissibility was verified
 rather than assumed: the full 21-output gate stayed green with every metric
@@ -250,11 +317,14 @@ for n, title, body in NARRATIVES:
 
 cells.append(md("""## Aggregate evolution figure
 
-Re-rendered from [`docs/ACCELERATION_LOG.md`](../docs/ACCELERATION_LOG.md) by
-`engine.plot_evolution`. Only the acceleration search appears: it is the one
-sequence measured on a fixed workload, and `plot_evolution` plots only entries
-whose status is `baseline` or `ACCEPT`, so the two rejected candidates are
-deliberately absent from the curve while remaining in the log."""))
+Two figures, because there are two searches on two different workload sets.
+The first is the conv-focused pass over 3 workloads
+([`ACCELERATION_LOG.md`](../docs/ACCELERATION_LOG.md)); the second is the
+full-kernel survey over 11
+([`ACCELERATION_LOG_SURVEY.md`](../docs/ACCELERATION_LOG_SURVEY.md)). Their
+totals are not comparable, so they are deliberately not drawn on one axis.
+`plot_evolution` plots only entries whose status is `baseline` or `ACCEPT`, so
+rejected candidates stay in the logs but out of the curves."""))
 
 cells.append(code('''import subprocess
 r = subprocess.run([sys.executable, "-m", "engine.plot_evolution",
@@ -265,7 +335,15 @@ r = subprocess.run([sys.executable, "-m", "engine.plot_evolution",
 print(r.stdout.strip() or r.stderr.strip()[-400:])
 
 from IPython.display import Image, display
-display(Image(filename="examples/evolution.png"))'''))
+display(Image(filename="examples/evolution.png"))
+
+r2 = subprocess.run([sys.executable, "-m", "engine.plot_evolution",
+                     "--port-dir", ".", "--log", "docs/ACCELERATION_LOG_SURVEY.md",
+                     "--output", "examples/evolution_survey.png", "--threshold", "1e-6"],
+                    capture_output=True, text=True,
+                    env={**os.environ, "PYTHONPATH": "/large_storage/zhoulab/shengmao/rebuildpy"})
+print(r2.stdout.strip() or r2.stderr.strip()[-400:])
+display(Image(filename="examples/evolution_survey.png"))'''))
 
 cells.append(code('''# Full history table, including the entries the aggregate figure cannot show.
 print(f"{'iter':>4}  {'status':<12} {'wall-clock':>12}  {'parity':>12}  title")

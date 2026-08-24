@@ -74,27 +74,58 @@ per-cell speedup, by avoiding rayon thread oversubscription.
 Measured by `examples/bench_phase6.py` under the rebuildpy protocol: BLAS and
 rayon pinned to 4 threads, one warmup run discarded, then 3 timed runs.
 
+Every kernel in the crate is covered, one workload each:
+
 | workload | Python | Rust | speedup |
 |---|---|---|---|
-| `conv2d_mirror` 1024², 11×11 donut kernel | 0.0692 s | **0.0306 s** | **2.3×** |
-| `gene_score`, 20 000 windows over a 4000² f32 CSR | 1.0636 s | **0.0049 s** | **217×** |
-| `contact_distance`, one real production cell | 0.2656 s | **0.0610 s** | **4.4×** |
+| `gene_score`, 20 000 windows over a 4000² f32 CSR | 1.0769 s | **0.0049 s** | **218×** |
+| `compartment` + strength, 3000², 823k nnz | 2.6432 s | **0.1209 s** | **22×** |
+| `find_summit`, 20 000 candidate pixels | 0.1536 s | **0.0074 s** | **21×** |
+| `insulation`, 4000², window 10 | 0.3531 s | **0.0338 s** | **10.6×** |
+| `contact_distance`, one real production cell | 0.2397 s | **0.0588 s** | **4.1×** |
+| `conv2d_mirror` 1024², 11×11 donut kernel | 0.0691 s | **0.0279 s** | **2.5×** |
+| `embedding`, 20 cells × 600² | 0.0062 s | **0.0025 s** | **2.5×** |
+| `merge`, 50 cells × 40k nnz | 0.0746 s | **0.0548 s** | **1.5×** |
+| `scan_kernels`, 2000², 4 convolutions | 0.4234 s | **0.2755 s** | **1.5×** |
+| `topdom`, 2000², window 10 | — | 0.0297 s | reference is R/rpy2; no in-process compare |
+| impute inner pipeline | — | 0.4362 s | see the real-data table below |
 
-Two caveats worth stating plainly:
+Three caveats worth stating plainly:
 
-* **The conv figure is post-acceleration.** Before Phase 6 it was **0.9×** —
-  genuinely *slower* than `scipy.ndimage.convolve`, because the inner loop
-  recomputed `mirror_index` (an integer modulo plus two branches) once per
-  `(i, j, p, q)`: ~127M times for that input. Hoisting the index tables fixed
-  it; see [ACCELERATION_LOG.md](ACCELERATION_LOG.md) iter 1.
+* **Two of these are post-acceleration figures, and both were regressions
+  before.** `conv2d_mirror` was **0.9×** — slower than
+  `scipy.ndimage.convolve` — and `merge` was **0.1×**, eight times slower than
+  scipy's sparse addition. Both are fixed; see
+  [ACCELERATION_LOG.md](ACCELERATION_LOG.md) iter 1 and
+  [ACCELERATION_LOG_SURVEY.md](ACCELERATION_LOG_SURVEY.md) iter 2.
 * **The gene-score figure is warmup-excluded.** A single one-shot call that
   also pays rayon's thread-pool spin-up is closer to **46×**. Both numbers are
   real and answer different questions; since gene-score processes thousands of
   cells per job, the steady-state figure is the one users experience.
+* **`target-cpu=native` was measured and rejected**: 0.0943 s against the
+  portable build's 0.0946 s, indistinguishable from noise. The shipped wheel
+  stays portable, and there is no opt-in knob to recommend.
 
-`target-cpu=native` was measured and **rejected**: 0.0943 s against the portable
-build's 0.0946 s, indistinguishable from noise. The shipped wheel stays
-portable, and there is no opt-in knob to recommend.
+### Real-data impute benchmark
+
+Five real prostate-cancer cells, from the standing harness at
+`../rust-scHiCluster-benchmark`. Upstream numbers are unchanged by the Rust-side
+work, so they are reused across runs.
+
+| resolution | chrom | upstream | Rust | speedup |
+|---|---|---|---|---|
+| 25 kb | chr1 | 51.71 s | **10.79 s** | **4.79×** |
+| 25 kb | chr19 | 2.12 s | **0.46 s** | **4.59×** |
+| 100 kb | chr1 | 3.46 s | **0.62 s** | **5.60×** |
+| 100 kb | chr19 | 0.195 s | **0.053 s** | **3.68×** |
+
+The 100 kb chr19 row used to read **1.04×** — the port bought essentially
+nothing there. `lib.rs` has its own separable `gaussian_filter_2d` which never
+routed through the shared convolution primitive, so it did not inherit that
+primitive's fix and its un-hoisted `mirror_index` dominated once the matrix was
+small enough for the RWR fixed point not to. Hoisting it moved that case to
+3.68×, bit-identically. See
+[ACCELERATION_LOG_SURVEY.md](ACCELERATION_LOG_SURVEY.md) iter 1.
 
 ## Accuracy
 
@@ -148,7 +179,8 @@ rust-scHiCluster/
 │   ├── DISCOVERY.md          rebuildpy Phase 0.5
 │   ├── MATH.md               (B)-rewrite perturbation bounds
 │   ├── ITERATION_LOG.md      per-phase port history
-│   ├── ACCELERATION_LOG.md   Phase 6 acceleration search
+│   ├── ACCELERATION_LOG.md   Phase 6a conv-focused search
+│   ├── ACCELERATION_LOG_SURVEY.md  Phase 6b full-kernel survey
 │   ├── AUDIT.md              Python-API coverage
 │   ├── RECONSTRUCTION_REPORT.md
 │   └── superpowers/          per-phase specs + plans
@@ -278,5 +310,6 @@ chromosome, matching upstream's `groupby(...).count()` -> filter ->
 `value_counts()`.
 
 Reduction-order discipline is tracked in [MATH.md](MATH.md), the per-phase port
-history in [ITERATION_LOG.md](ITERATION_LOG.md), and the acceleration search in
-[ACCELERATION_LOG.md](ACCELERATION_LOG.md).
+history in [ITERATION_LOG.md](ITERATION_LOG.md), and the acceleration searches
+in [ACCELERATION_LOG.md](ACCELERATION_LOG.md) (conv-focused) and
+[ACCELERATION_LOG_SURVEY.md](ACCELERATION_LOG_SURVEY.md) (all 11 kernels).
