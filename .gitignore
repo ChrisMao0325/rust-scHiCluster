@@ -137,3 +137,9 @@ data/fixtures/loop_small.cool
 data/fixtures/domain_small.npz
 data/fixtures/compartment_small.npz
 data/fixtures/embedding_small.npz
+data/fixtures/gene_score_small.npz
+data/fixtures/gene_score_small.cool
+data/fixtures/gene_score_small.contact.tsv.gz
+data/fixtures/contact_distance_small.npz
+data/fixtures/contact_distance_small.tsv.gz
+data/fixtures/per_function_reference.json
