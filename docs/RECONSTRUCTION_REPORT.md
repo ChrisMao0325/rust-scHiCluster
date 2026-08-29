@@ -82,9 +82,9 @@ rebuild-rust python tests/_run_candidate.py` → `pytest -q
 tests/test_exact_match.py`.
 
 Per-cell timings and per-fixture values are visualised in
-[`examples/compare_Python_vs_Rust.ipynb`](../examples/compare_Python_vs_Rust.ipynb)
+[`examples/compare_Python_vs_Rust.ipynb`](../../rust-scHiCluster-benchmark/examples/compare_Python_vs_Rust.ipynb)
 (pipeline level) and
-[`examples/function_by_function_Python_parity.ipynb`](../examples/function_by_function_Python_parity.ipynb)
+[`examples/function_by_function_Python_parity.ipynb`](../../rust-scHiCluster-benchmark/examples/function_by_function_Python_parity.ipynb)
 (function level, 13 comparisons, all PASS).
 
 ## 4. Acceleration evidence
@@ -95,7 +95,7 @@ floating-point reduction was committed.** Per-candidate reasoning in
 
 ### Pass A — conv-focused ([ACCELERATION_LOG.md](ACCELERATION_LOG.md))
 
-![evolution](../examples/evolution.png)
+![evolution](../../rust-scHiCluster-benchmark/examples/evolution.png)
 
 | Iteration | Rewrite | Admissibility | Verdict |
 |---|---|---|---|
@@ -106,9 +106,9 @@ floating-point reduction was committed.** Per-candidate reasoning in
 
 ### Pass B — full-kernel survey ([ACCELERATION_LOG_SURVEY.md](ACCELERATION_LOG_SURVEY.md))
 
-![evolution survey](../examples/evolution_survey.png)
+![evolution survey](../../rust-scHiCluster-benchmark/examples/evolution_survey.png)
 
-Pass A covered three workloads. Pass B extended `examples/bench_phase6.py` to
+Pass A covered three workloads. Pass B extended the benchmark harness to
 **eleven — one per kernel in the crate** — because nothing had established
 whether the rest were fast.
 
@@ -160,7 +160,7 @@ bound; it records the reasoning per candidate so the absence is auditable.
 - [x] **`pip install` clean in a fresh py3.10 env** — `conda create -n schicluster-rs-fresh python=3.10`, then `pip install` the wheel: resolves numpy 2.2.6, scipy 1.15.3, pandas + deps; `import schicluster_rs` succeeds, `_RUST_AVAILABLE` is `True`, `convolve2d_mirror` returns `(8, 8)`, and `patch_schicluster()` degrades to `False` rather than raising when upstream is absent.
       **This check earned its place:** it caught a real packaging bug. `domain/` and `contact_distance/` imported pandas at module top level while `pyproject.toml` declared only numpy and scipy, so a clean install imported and immediately died. Fixed by declaring `pandas>=1.1` and making both imports lazy, matching every other wrapper.
 - [x] **`pytest -q` green under the `--release` build** — `38 passed, 10 skipped`. The 10 skips are `tests/test_parity.py`, which needs upstream `schicluster`; it is Python 3.6 + rpy2 and cannot share an interpreter with an abi3-py39 extension. That path is covered cross-environment by the manifest gate instead.
-- [x] **Four mandatory notebooks pre-executed** — [`compare_Python_vs_Rust.ipynb`](../examples/compare_Python_vs_Rust.ipynb) (11 code cells, 2 figures), [`tutorial_loop_domain.ipynb`](../examples/tutorial_loop_domain.ipynb) (18 cells, 9 figures, one section per public function), [`function_by_function_Python_parity.ipynb`](../examples/function_by_function_Python_parity.ipynb) (13 function-level comparisons with full parameter tables), [`evolution.ipynb`](../examples/evolution.ipynb) (9 iteration headers, 10 figures). Every code cell carries outputs; regenerate with `examples/build_notebook_{1,2,3,4}.py`.
+- [x] **Four mandatory notebooks pre-executed** — [`compare_Python_vs_Rust.ipynb`](../../rust-scHiCluster-benchmark/examples/compare_Python_vs_Rust.ipynb) (11 code cells, 2 figures), [`tutorial_loop_domain.ipynb`](../../rust-scHiCluster-benchmark/examples/tutorial_loop_domain.ipynb) (18 cells, 9 figures, one section per public function), [`function_by_function_Python_parity.ipynb`](../../rust-scHiCluster-benchmark/examples/function_by_function_Python_parity.ipynb) (13 function-level comparisons with full parameter tables), [`evolution.ipynb`](../../rust-scHiCluster-benchmark/examples/evolution.ipynb) (9 iteration headers, 10 figures). Every code cell carries outputs; regenerate with `build_notebook_{1,2,3,4}.py` in the benchmark directory.
 - [x] **License compatible with upstream** — both MIT; `LICENSE` ships in the sdist and wheel.
 - [x] **Version pinned** — `0.5.0` in both `pyproject.toml` and `rust/Cargo.toml`; the installed wheel reports `0.5.0`.
 
@@ -192,7 +192,7 @@ bound; it records the reasoning per candidate so the absence is auditable.
    real-data impute harness needs it to write its HDF5 output; it is already a
    transitive requirement of any `to_hdf` path.)
 9. **Iterations 1–3 of [ITERATION_LOG.md](ITERATION_LOG.md) recorded no
-   timings.** `examples/evolution.ipynb` plots those points as gaps rather than
+   timings.** `evolution.ipynb` plots those points as gaps rather than
    inventing values; the aggregate figure covers only the Phase 6 acceleration
    search, the one sequence measured on a fixed workload.
 10. **The two acceleration logs use different workload sets** and therefore
@@ -217,7 +217,7 @@ bound; it records the reasoning per candidate so the absence is auditable.
 | CLI | `schicluster-rs <subcommand>` — 8 subcommands, pre-applying the patch then delegating to upstream's argparse |
 | Snakemake | `python/schicluster_rs/loop/snakemake_template_loop.txt` |
 | Tutorials | [`tutorial/`](../tutorial/README.md) — 7 per-module guides |
-| Notebooks | `examples/` — the four rebuildpy deliverables plus two pre-existing |
+| Notebooks | `../rust-scHiCluster-benchmark/examples/` — the four rebuildpy deliverables plus two pre-existing. Moved out of the package so users are not shown developer material; paths resolve the package checkout via `$SCHICLUSTER_RS_REPO` or a sibling lookup. |
 
 One integration subtlety worth recording: `call_domain_and_insulation` builds
 its `run_top_dom` closure *inside* the function body, so it cannot be rebound at

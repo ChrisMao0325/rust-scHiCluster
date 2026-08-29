@@ -416,7 +416,7 @@ comparable with anything you have already produced:
 ## Getting help
 
 - Per-module guides with worked examples: [`tutorial/`](tutorial/README.md)
-- Runnable notebooks: [`examples/`](examples/)
+- Runnable notebooks: [`examples/`](../rust-scHiCluster-benchmark/examples/) (in the developer directory)
 - Validation report: [`docs/RECONSTRUCTION_REPORT.md`](docs/RECONSTRUCTION_REPORT.md)
 - Implementation internals, benchmarks and acceleration history:
   [developer documentation](../rust-scHiCluster-benchmark/README.md)

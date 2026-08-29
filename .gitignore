@@ -143,3 +143,7 @@ data/fixtures/gene_score_small.contact.tsv.gz
 data/fixtures/contact_distance_small.npz
 data/fixtures/contact_distance_small.tsv.gz
 data/fixtures/per_function_reference.json
+
+# examples/ moved to ../rust-scHiCluster-benchmark/examples/ — notebooks,
+# their builders and the per-kernel benchmark harness are developer material.
+examples/

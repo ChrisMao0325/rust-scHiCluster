@@ -2,7 +2,7 @@
 
 > Phase 6's (E)-exact-only acceleration search. **Schema is strict**: the
 > `## iter N — ...` headers and the fenced `yaml` blocks below are parsed by
-> `engine/plot_evolution.py` to render `examples/evolution.png`. Keep the field
+> `engine/plot_evolution.py` to render `../rust-scHiCluster-benchmark/examples/evolution.png`. Keep the field
 > names verbatim.
 >
 > This file is deliberately separate from [ITERATION_LOG.md](ITERATION_LOG.md),
@@ -12,7 +12,7 @@
 > cannot share an axis with an acceleration search. The evolution figure's
 > subject is this file.
 >
-> All timings are `--release` builds, produced by `examples/bench_phase6.py`
+> All timings are `--release` builds, produced by `../rust-scHiCluster-benchmark/examples/bench_phase6.py`
 > with BLAS and rayon pinned to 4 threads, one warmup run discarded, then 3
 > timed runs (mean + stddev; median + IQR if stddev exceeded 10% of the mean).
 > `wall_clock_mean_s` is the summed Rust wall-clock across all three benchmark
@@ -41,7 +41,7 @@ notes: |
   end of Phase 5, all 21 manifest outputs green, the worst per-output parity
   metric across the gate being 0.0.
 
-  Benchmark workloads (see examples/bench_phase6.py):
+  Benchmark workloads (see ../rust-scHiCluster-benchmark/examples/bench_phase6.py):
     conv2d_mirror     1024x1024 input, 11x11 donut kernel
     gene_score        20000 windows over a 4000x4000 f32 CSR
     contact_distance  one real ProstateCancer/rmbkl cell
@@ -207,7 +207,7 @@ notes: |
   be (E) and remains available to a future phase; it is the prefix-sum
   arithmetic, not the banding, that crosses into (B).
 
-  This block is intentionally absent from examples/evolution.png:
+  This block is intentionally absent from ../rust-scHiCluster-benchmark/examples/evolution.png:
   plot_evolution only plots entries whose status is `baseline` or `ACCEPT`.
 ```
 

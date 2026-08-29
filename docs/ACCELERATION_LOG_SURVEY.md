@@ -4,7 +4,7 @@
 > first pass could not answer: **had the other kernels ever been profiled?**
 > They had not. [ACCELERATION_LOG.md](ACCELERATION_LOG.md) covered three
 > workloads (`conv`, `gene_score`, `contact_distance`); this pass extends
-> `examples/bench_phase6.py` to **eleven**, one per kernel in the crate, and
+> `../rust-scHiCluster-benchmark/examples/bench_phase6.py` to **eleven**, one per kernel in the crate, and
 > acts on what that revealed.
 >
 > **Separate file, separate figure, on purpose.** `wall_clock_mean_s` here is
@@ -12,7 +12,7 @@
 > with the 3-workload total in `ACCELERATION_LOG.md`. Plotting both series on
 > one axis would show a spurious jump at the point the benchmark grew, so this
 > series carries its own baseline and renders to
-> `examples/evolution_survey.png`. Schema is the strict rebuildpy one, parsed by
+> `../rust-scHiCluster-benchmark/examples/evolution_survey.png`. Schema is the strict rebuildpy one, parsed by
 > `engine/plot_evolution.py`.
 >
 > All timings are `--release` builds with BLAS and rayon pinned to 4 threads,

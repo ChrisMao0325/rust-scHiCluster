@@ -8,7 +8,7 @@ Start here — none of it assumes any knowledge of Rust:
 |---|---|
 | [README](../README.md) | Installation, quick start, Python API, CLI, input formats |
 | [tutorial/](../tutorial/README.md) | Per-module guides with worked examples |
-| [examples/](../examples/) | Runnable notebooks |
+| [examples/](../../rust-scHiCluster-benchmark/examples/) | Runnable notebooks (in the developer directory) |
 | [PERFORMANCE.md](PERFORMANCE.md) | Speed and accuracy summary |
 
 ## If you are evaluating whether to trust the port
@@ -16,8 +16,8 @@ Start here — none of it assumes any knowledge of Rust:
 | | |
 |---|---|
 | [RECONSTRUCTION_REPORT.md](RECONSTRUCTION_REPORT.md) | Full sign-off: identity, parity evidence for all 21 outputs, acceleration evidence, known limitations |
-| [examples/compare_Python_vs_Rust.ipynb](../examples/compare_Python_vs_Rust.ipynb) | Pipeline-level parity, visualised |
-| [examples/function_by_function_Python_parity.ipynb](../examples/function_by_function_Python_parity.ipynb) | Function-level parity with parameter tables |
+| [compare_Python_vs_Rust.ipynb](../../rust-scHiCluster-benchmark/examples/compare_Python_vs_Rust.ipynb) | Pipeline-level parity, visualised |
+| [function_by_function_Python_parity.ipynb](../../rust-scHiCluster-benchmark/examples/function_by_function_Python_parity.ipynb) | Function-level parity with parameter tables |
 
 ## If you are developing the port
 
