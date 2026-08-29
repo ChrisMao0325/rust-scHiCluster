@@ -101,15 +101,24 @@ schicluster-rs domain --cell_table_path cell_table.tsv --output_prefix sample \
 import schicluster_rs
 import pandas as pd
 
-# Per-gene contact scores from imputed .cool files
+# Per-gene contact scores for one cell, from an imputed .cool file
 chrom_sizes = pd.read_csv('chrom.sizes', sep='\t', header=None,
                           index_col=0).squeeze('columns')
 gene_meta = pd.read_csv('gene_meta.tsv', sep='\t', header=None, index_col=3)
-gene_meta[1] = gene_meta[1] // 10_000      # start -> bin
-gene_meta[2] = gene_meta[2] // 10_000      # end   -> bin
+
+# gene_score_impute is the *per-cell worker*. In a normal run the
+# `gene-score` command converts coordinates to bins before calling it, so
+# when you call it directly you have to do that conversion yourself:
+gene_meta[1] = gene_meta[1] // 10_000      # start bp -> bin
+gene_meta[2] = gene_meta[2] // 10_000      # end   bp -> bin
 
 scores = schicluster_rs.gene_score_impute('cell.cool', chrom_sizes, gene_meta)
 ```
+
+> **On the command line you do not do this.** `schicluster-rs gene-score` reads
+> `gene_meta.tsv` in base pairs and applies `--resolution` (and `--slop`) for
+> you. The conversion above is only needed when calling the per-cell function
+> directly, bypassing that step.
 
 ### Controlling parallelism
 
@@ -184,8 +193,16 @@ gene_score_raw(cell_path, chrom_sizes, gene_meta, resolution,
 ```
 
 `impute` mode reads imputed `.cool` files, `raw` mode reads a contact file
-directly. `gene_meta` positions must already be in **bins** (divided by
-resolution). See [Behaviour notes](#behaviour-notes) for one important quirk.
+directly.
+
+**These are per-cell workers, not the whole analysis.** The `gene-score`
+command wraps them: it reads your gene annotation in **base pairs**, applies
+`--resolution` and `--slop` to convert to bins, then fans the workers out
+across cells. Call them directly and you take on that conversion yourself —
+`gene_meta` positions must already be in **bins**, i.e.
+`(start - slop) // resolution` and `(end + slop) // resolution`.
+
+See [Behaviour notes](#behaviour-notes) for one important quirk.
 
 ### Embeddings
 
@@ -342,7 +359,12 @@ cell_B    /data/rmbkl/cell_B.contact.rmbkl.tsv.gz
 ### Gene metadata — `gene_meta.tsv`
 
 Four columns, tab-separated, no header: chromosome, start, end, gene ID.
-Coordinates are in **base pairs**; the CLI converts them to bins for you.
+
+Coordinates are in **base pairs** — write them exactly as they come from your
+annotation. `schicluster-rs gene-score` divides by `--resolution` (after
+applying `--slop`) internally. The only time you convert to bins yourself is
+when calling `gene_score_impute` / `gene_score_raw` directly, since those are
+the per-cell workers that sit downstream of the conversion.
 
 ```
 chr1    11121    24894    ENSG00000290825.2
@@ -379,24 +401,6 @@ chromosome size and resolution.
 Combining Rust with sensible process/thread balancing gives a further ~3× on
 multi-cell runs — see [Controlling parallelism](#controlling-parallelism).
 
-Methodology, per-kernel tables and real-data measurements:
-[developer benchmark documentation](../rust-scHiCluster-benchmark/README.md).
-
-## Accuracy
-
-Every release is validated against the original Python (and, for TopDom, R)
-implementation through a **pre-registered parity gate**: 21 outputs, each with
-a tolerance fixed *before* the code was written and never loosened afterwards.
-All 21 pass.
-
-Nine outputs — including gene scores, contact-distance decay and embedding
-features — are **bit-for-bit identical** to upstream. The rest agree to within
-one part in a million, which is below float32 precision and far below any
-biological signal.
-
-To reproduce the validation yourself, or to see per-output numbers, see
-[`docs/RECONSTRUCTION_REPORT.md`](docs/RECONSTRUCTION_REPORT.md).
-
 ### Behaviour notes
 
 Two upstream behaviours are **deliberately preserved**, so your results stay
@@ -412,14 +416,6 @@ comparable with anything you have already produced:
   this package.
 
 ---
-
-## Getting help
-
-- Per-module guides with worked examples: [`tutorial/`](tutorial/README.md)
-- Runnable notebooks: [`examples/`](../rust-scHiCluster-benchmark/examples/) (in the developer directory)
-- Validation report: [`docs/RECONSTRUCTION_REPORT.md`](docs/RECONSTRUCTION_REPORT.md)
-- Implementation internals, benchmarks and acceleration history:
-  [developer documentation](../rust-scHiCluster-benchmark/README.md)
 
 ## Citation
 

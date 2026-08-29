@@ -11,6 +11,11 @@ around **200×** on this loop.
 
 ## Direct API
 
+`gene_score_impute` and `gene_score_raw` are the **per-cell workers**. In a
+normal run the `gene-score` command reads your annotation in base pairs,
+converts it to bins, and fans these out across cells — so calling them directly
+means doing the conversion yourself:
+
 ```python
 import schicluster_rs
 import pandas as pd
@@ -19,7 +24,8 @@ chrom_sizes = pd.read_csv('chrom.sizes', sep='\t', header=None,
                           index_col=0).squeeze('columns')
 gene_meta = pd.read_csv('gene_meta.tsv', sep='\t', header=None, index_col=3)
 gene_meta = gene_meta[gene_meta[0].isin(chrom_sizes.index)]
-# bins, not bp — the orchestrator floor-divides before calling the worker
+# Bins, not base pairs. With --slop N the command would instead compute
+# (start - N) // resolution and (end + N) // resolution.
 gene_meta[1] = gene_meta[1] // 10_000
 gene_meta[2] = gene_meta[2] // 10_000
 
@@ -64,8 +70,16 @@ schicluster-rs gene-score \
 
 `--cell_table_path` is a two-column headerless TSV of `cell_uid` and the path to
 that cell's `.cool`. `--gene_meta_path` is a headerless TSV of `chromosome`,
-`start`, `end`, `gene_id`. `--slop N` widens every gene by `N` bp on both sides
-before binning.
+`start`, `end`, `gene_id`.
+
+**Coordinates here are in base pairs, not bins.** Pass your annotation exactly
+as it comes; the command applies `--slop` and then divides by `--resolution`
+before any scoring happens. Pre-dividing them yourself would bin them twice and
+silently produce near-zero scores. (This is the opposite of the direct API
+above, which is called *after* that conversion — see
+[Direct API](#direct-api).)
+
+`--slop N` widens every gene by `N` bp on each side before binning.
 
 ## Behaviour notes
 
