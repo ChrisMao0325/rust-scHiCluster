@@ -1,16 +1,17 @@
 # schicluster_rs tutorials
 
-Per-module usage guides for the Rust-backed direct API.
+Per-module usage guides. Each shows the direct API, the drop-in
+monkey-patch route, and the equivalent command line.
 
-| Module | Tutorial | Phase | Rust speedup |
-|---|---|---|---|
-| Impute | [impute.md](impute.md) | 0 | ~10× on long chromosomes |
-| Loop calling | [loop.md](loop.md) | 1 | per-chrom inner kernels |
-| Domain (insulation + TopDom) | [domain.md](domain.md) | 2 | drops rpy2 / R |
-| Compartment | [compartment.md](compartment.md) | 3 | per-chrom inner kernel |
-| Embedding (cell-by-feature) | [embedding.md](embedding.md) | 4 | modest (I/O-bound); SVD stays sklearn |
-| Gene score | [gene_score.md](gene_score.md) | 5 | ~217× on the per-gene window loop |
-| Contact distance | [contact_distance.md](contact_distance.md) | 5 | ~4.4× (gzip-inflate bound) |
+| Module | Guide | Speedup |
+|---|---|---|
+| Imputation | [impute.md](impute.md) | 4–6× on real cells |
+| Loop calling | [loop.md](loop.md) | per-chromosome kernels |
+| Domains + insulation | [domain.md](domain.md) | ~10×, and **no R required** |
+| Compartments | [compartment.md](compartment.md) | ~20× |
+| Embedding | [embedding.md](embedding.md) | modest; mostly I/O-bound |
+| Gene scores | [gene_score.md](gene_score.md) | ~200× on the per-gene loop |
+| Contact distance | [contact_distance.md](contact_distance.md) | ~4× |
 
 ## Two integration styles
 
@@ -31,16 +32,14 @@ identities inside the upstream modules; the direct API gives you the
 functions by name from `schicluster_rs`. Mix and match freely — they
 share the same underlying Rust extension.
 
-## Parity guarantees
+## Do the results match upstream?
 
-Every public function below is parity-gated against the upstream Python
-reference. Per-output classes and thresholds are pre-registered in
-[`data/manifest.yaml`](../data/manifest.yaml) and live snapshots of the
-metrics are in [docs/ITERATION_LOG.md](../docs/ITERATION_LOG.md) (per-phase
-ports) and [docs/ACCELERATION_LOG.md](../docs/ACCELERATION_LOG.md)
-(the acceleration search). Full
-gate status, accuracy notes and algorithm descriptions are in
-[docs/PERFORMANCE.md](../docs/PERFORMANCE.md).
+Yes. Every function below is validated against the original Python
+implementation on each release, against tolerances fixed in advance. All 21
+checked outputs pass and nine are bit-for-bit identical. See
+[docs/PERFORMANCE.md](../docs/PERFORMANCE.md) for the summary and
+[docs/RECONSTRUCTION_REPORT.md](../docs/RECONSTRUCTION_REPORT.md) for
+per-output numbers.
 
 ## What stays in Python
 

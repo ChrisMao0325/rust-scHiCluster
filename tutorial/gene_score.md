@@ -4,10 +4,10 @@ Sums the contact matrix over a rectangular window around each gene's bins, one
 score per gene per cell. Two modes: `impute` reads imputed `.cool` files,
 `raw` builds the matrix from a contact file on the fly.
 
-Upstream evaluates `D[r0:r1, c0:c1].sum()` once per gene, allocating a fresh
-scipy submatrix each time. With a human gene set that is ~78,700 allocations per
-cell. The Rust kernel binary-searches the CSR in place instead, parallel across
-genes.
+This is the step that dominates a gene-score job: with a human gene set,
+upstream does roughly 78,700 separate matrix operations per cell. The
+accelerated version does the same arithmetic without that overhead, giving
+around **200×** on this loop.
 
 ## Direct API
 
@@ -77,19 +77,20 @@ first-bin gene's score and break comparability with results you already have.
 `--mode raw` uses `[xx:(yy+1), xx:(yy+1)]`, with no `-1`, and does not share the
 quirk: the same gene can score `0.0` in impute mode and non-zero in raw mode.
 
-**Scores are bit-identical to upstream, not merely close.**
-`csr.sum(axis=None)` is not a flat `data.sum()` — scipy computes it as
-`(self @ ones(n_cols)).sum()`, a serial per-row matvec followed by pairwise
-summation over the row sums, in the matrix's own dtype. Imputed cools are f32,
-so a "better" f64 accumulation would sit ~3.4e-6 away from upstream and fail
-the 1e-6 parity gate. The kernel reproduces scipy's two-stage order instead.
-See [`docs/MATH.md`](../docs/MATH.md).
+**Scores are bit-identical to upstream, not merely close.** Every gene score
+matches the original Python implementation exactly, so swapping in this package
+cannot shift a downstream result. (Achieving that took some care, because
+imputed matrices are stored in single precision and summation order matters at
+that precision — see the
+[developer notes](../../rust-scHiCluster-benchmark/docs/IMPLEMENTATION.md#gene_scorers--per-gene-window-sums)
+if you are curious.)
 
-**`--mode raw` is far less accelerated than `--mode impute`.** Its pandas parse
-and `groupby` matrix build stay in Python; only the per-gene sum is Rust. Impute
-mode is where the ~78.7k-allocation loop lives, and where the win is.
+**`--mode raw` is far less accelerated than `--mode impute`.** In raw mode the
+contact file still has to be parsed and binned in Python; only the per-gene
+summation is accelerated. Impute mode is where the expensive loop lives, and
+where the speedup is.
 
-**Speed.** 20,000 gene windows over a 4000×4000 f32 CSR: 1.06 s in scipy,
-0.0049 s in Rust — **217×**, warmup excluded. A single one-shot call that also
-pays rayon's thread-pool spin-up is closer to 46×. See
+**Speed.** Around **200×** on the per-gene loop in steady state. A single
+one-shot call is closer to 46×, because it also pays thread-pool startup —
+which matters little for real jobs processing thousands of cells. See
 [`docs/PERFORMANCE.md`](../docs/PERFORMANCE.md).

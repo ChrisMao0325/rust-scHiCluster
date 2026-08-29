@@ -4,9 +4,9 @@ For each cell, computes two things from its contact file: a **log-spaced
 histogram of cis contact distances** (`|pos2 - pos1|`), and a **per-chromosome
 sparsity** count — the number of distinct off-diagonal bin pairs.
 
-Upstream reads the whole gzipped contact TSV into a pandas DataFrame in order to
-use four of its columns. The Rust kernel streams the file line by line in
-constant memory and never builds a DataFrame.
+Upstream reads the whole gzipped contact file into a pandas DataFrame in order
+to use four of its columns. This package streams the file instead, in constant
+memory, which is where the speedup comes from.
 
 ## Direct API
 
@@ -81,11 +81,10 @@ present with a zero.
 **Both outputs are exact.** They are integer counts, so addition is
 order-independent and the parity gate is `deterministic-strict` at `0.0`.
 
-**The honest speedup is modest.** Measured at **4.4×** on a real production
-cell (0.266 s → 0.061 s). Gzip inflate is the floor — `flate2` does not
-decompress meaningfully faster than zlib — so the win comes entirely from
-skipping DataFrame construction, not from decompression. Do not expect the
-~10× seen on long-chromosome imputation.
+**The speedup is modest, around 4×.** Decompressing the gzipped contact file
+is the floor and cannot be made faster; the gain comes from not building a
+DataFrame for four columns. Don't expect the larger speedups seen elsewhere in
+the package.
 
 **Parse errors are fatal, by design.** Unlike `filter-contact`, upstream's
 `compute_decay` calls `read_csv` **without** `comment='#'`, so a `#` line is a
